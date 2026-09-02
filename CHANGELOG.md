@@ -6,7 +6,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 > **Note:** this file was recreated from scratch. The project's release history prior to this entry was not available to reconstruct accurately, and this changelog does not fabricate it. Entries from this point forward are accurate.
 
-## [Unreleased]
+## [0.8.0] - 2026-09-02
 
 Implementation pass driven by a pre-NPM validation that scored the compliance/security checking pipeline 31/100. Full rationale and before/after evidence: [docs/implementation-gap-analysis.md](docs/implementation-gap-analysis.md).
 
