@@ -1,6 +1,6 @@
 {
   "name": "@vantin/backendguard",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "AI backend engineering guardrails for NestJS, PostgreSQL, TypeORM, and Prisma — task-aware security/architecture/database context for AI coding agents, plus post-task compliance reporting.",
   "type": "module",
   "bin": {
