@@ -1,0 +1,6 @@
+{
+  "name": "fixture-railway-render",
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

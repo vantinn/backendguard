@@ -1,0 +1,51 @@
+$ ctx leaderboard --hallucination
+Hallucination Leaderboard
+Repos: 12
+Tasks: 20
+
+System              Correct Skill
+------------------  -------------
+Raw Agent           10.0%
+BackendGuard + Codex   80.0%
+
+Sample failures:
+- expo-eas: "fix deployed"
+  expected: eas, mobile-deployment, github-actions-ci-cd
+  raw (wrong): eas, env-secret-management, railway-render-deployment
+  backendguard (correct): eas, github-actions-ci-cd, mobile-deployment
+- next-vercel: "fix deployed"
+  expected: vercel-deployment, github-actions-ci-cd, env-secret-management
+  raw (wrong): eas, env-secret-management, railway-render-deployment
+  backendguard (correct): vercel-deployment, github-actions-ci-cd, env-secret-management
+- docker-node: "docker image build failed"
+  expected: docker, build-log-debugging
+  raw (wrong): docker, build-log-debugging, github-actions-ci-cd
+  backendguard (correct): build-log-debugging, docker
+- railway-render: "Railway deploy health check failed"
+  expected: railway-render-deployment, build-log-debugging
+  raw (wrong): railway-render-deployment, build-log-debugging, firebase-hosting
+  backendguard (correct): build-log-debugging, railway-render-deployment
+- firebase-hosting: "deploy firebase hosting"
+  expected: firebase-hosting
+  raw (wrong): firebase-hosting, flutter-firebase, railway-render-deployment
+  backendguard (correct): firebase-hosting
+- nest-prisma: "optimize slow prisma queries"
+  expected: prisma, nestjs-module
+  raw (wrong): prisma, nestjs-module, android-signing
+  backendguard (correct): nestjs-module, prisma
+
+$ ctx skills doctor -- "fix deployed"  # Expo fixture
+BackendGuard skill doctor
+fixture: expo-eas
+prompt: fix deployed
+selected: eas, github-actions-ci-cd, mobile-deployment
+expected: eas, mobile-deployment, github-actions-ci-cd
+rejected: vercel-deployment
+
+$ ctx skills doctor -- "fix deployed"  # Next/Vercel fixture
+BackendGuard skill doctor
+fixture: next-vercel
+prompt: fix deployed
+selected: vercel-deployment, github-actions-ci-cd, env-secret-management
+expected: vercel-deployment, github-actions-ci-cd, env-secret-management
+rejected: eas

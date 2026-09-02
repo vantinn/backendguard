@@ -1,0 +1,65 @@
+name: Launch roadmap
+description: Track launch, release, and roadmap work for BackendGuard.
+title: "[Launch]: "
+labels:
+  - launch
+  - roadmap
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for release hardening, launch polish, benchmark follow-up, and adapter roadmap items.
+  - type: textarea
+    id: objective
+    attributes:
+      label: Objective
+      description: What launch or roadmap outcome should this issue produce?
+      placeholder: "Example: Improve fresh install smoke coverage before npm publish."
+    validations:
+      required: true
+  - type: checkboxes
+    id: release-safety
+    attributes:
+      label: Release safety checklist
+      options:
+        - label: npm pack --dry-run passes
+        - label: Fresh tarball install passes in a clean repo
+        - label: backendguard setup --yes passes
+        - label: backendguard context smoke passes
+        - label: backendguard rules doctor smoke passes
+        - label: backendguard benchmark --skills passes
+        - label: npm test passes
+        - label: npm run validate:plugin passes
+        - label: npm run test:mcp passes
+  - type: checkboxes
+    id: launch-polish
+    attributes:
+      label: Launch polish
+      options:
+        - label: README hero/demo is current
+        - label: Benchmark table is current
+        - label: Safety model is documented
+        - label: Optional adapter positioning is clear
+        - label: GitHub release notes are ready
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Release hardening
+        - README / docs
+        - Skill Router benchmark
+        - Hallucination Benchmark
+        - Agent Replay
+        - Community Skill Packs
+        - Optional graph adapter
+        - Optional memory adapter
+        - Installer / setup
+        - Telemetry / evidence
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Add links, benchmark output, failure logs, or design notes.

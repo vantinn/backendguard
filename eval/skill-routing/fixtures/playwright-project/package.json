@@ -1,0 +1,6 @@
+{
+  "name": "fixture-playwright-project",
+  "devDependencies": {
+    "@playwright/test": "^1.46.0"
+  }
+}

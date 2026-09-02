@@ -1,0 +1,6 @@
+{
+  "name": "fixture-firebase-hosting",
+  "dependencies": {
+    "firebase": "^10.0.0"
+  }
+}

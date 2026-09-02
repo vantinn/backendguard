@@ -1,0 +1,8 @@
+{
+  "name": "fixture-express-mongo-jwt",
+  "dependencies": {
+    "express": "^5.0.0",
+    "jsonwebtoken": "^9.0.0",
+    "mongoose": "^8.0.0"
+  }
+}

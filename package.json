@@ -1,0 +1,86 @@
+{
+  "name": "@vantin/backendguard",
+  "version": "0.7.0",
+  "description": "AI backend engineering guardrails for NestJS, PostgreSQL, TypeORM, and Prisma — task-aware security/architecture/database context for AI coding agents, plus post-task compliance reporting.",
+  "type": "module",
+  "bin": {
+    "backendguard": "bin/ctx.js",
+    "backendguard-codex": "bin/ctx.js"
+  },
+  "files": [
+    "bin/",
+    "plugins/",
+    "scripts/",
+    ".codex/skills/",
+    ".codex/workflows/",
+    ".agents/",
+    "README.md",
+    "DEMO.md",
+    "LAUNCH.md",
+    "community-skills/",
+    "eval/",
+    "docs/",
+    "LICENSE",
+    "CHANGELOG.md"
+  ],
+  "scripts": {
+    "test": "vitest run test",
+    "build": "node bin/ctx.js --version",
+    "validate:plugin": "node test/validate-plugin.js",
+    "benchmark:skills": "node bin/ctx.js benchmark --skills",
+    "leaderboard:hallucination": "node eval/hallucination/run-leaderboard.js",
+    "leaderboard:agents": "node eval/hallucination/run-agent-leaderboard.js --agents=codex,gemini",
+    "demo:capture": "node docs/demo/capture-live-demos.mjs",
+    "sync:community-skills": "node scripts/sync-community-skills.mjs",
+    "test:mcp": "node test/mcp-protocol-smoke.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4"
+  },
+  "keywords": [
+    "backend",
+    "nestjs",
+    "postgresql",
+    "typeorm",
+    "prisma",
+    "security",
+    "compliance",
+    "codex",
+    "claude-code",
+    "antigravity",
+    "plugin",
+    "agents",
+    "context",
+    "hooks",
+    "mcp",
+    "semantic-search",
+    "agents-md",
+    "developer-tools"
+  ],
+  "author": {
+    "name": "BackendGuard"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@xenova/transformers": "^2.17.2",
+    "smol-toml": "^1.6.1",
+    "sql.js": "^1.14.1",
+    "typescript": "^5.9.3",
+    "zod": "^4.4.3"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vantinn/backendguard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vantinn/backendguard/issues"
+  },
+  "homepage": "https://github.com/vantinn/backendguard#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "servers": {
+    "ctx-mcp": {
+      "command": "node",
+      "args": [
+        "/home/minh_dev/workspaces/contextOS/plugins/ctx/mcp/server.js"
+      ],
+      "type": "stdio"
+    },
+    "code-review-graph": {
+      "command": "/home/minh_dev/.local/share/pipx/venvs/code-review-graph/bin/python",
+      "args": [
+        "-m",
+        "code_review_graph",
+        "serve"
+      ],
+      "type": "stdio"
+    },
+    "agentmemory": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@agentmemory/mcp"
+      ],
+      "type": "stdio"
+    }
+  },
+  "mcpServers": {
+    "ctx-mcp": {
+      "type": "stdio",
+      "command": "node",
+      "args": [
+        "/home/minh_dev/.ctx/backendguard/agents/copilot/backendguard/plugins/ctx/mcp/server.js"
+      ]
+    }
+  }
+}

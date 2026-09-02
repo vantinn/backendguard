@@ -1,0 +1,23 @@
+id: postgresql
+name: PostgreSQL Engineering
+description: Design indexes, constraints, transactions, and migration-safe schema changes; diagnose slow queries and N+1 patterns on PostgreSQL.
+positive_triggers:
+  prompts: [postgres, postgresql, index, slow query, "n+1", migration, transaction, constraint, foreign key, deadlock, connection pool, query plan, explain analyze, pagination]
+  files: [prisma/schema.prisma, ormconfig.json, ormconfig.js, "src/migrations/*", "*.entity.ts"]
+  dependencies: [pg, postgres, prisma, typeorm]
+evidence:
+  files: [prisma/schema.prisma, "src/migrations/*"]
+  dependencies: [pg, prisma, typeorm]
+negative_triggers:
+  prompts: [mongodb, mongoose schema]
+  dependencies: [mongoose, mongodb]
+workflow:
+  - Identify whether the change touches schema (indexes, constraints), a query (filtering, joins, aggregation), a transaction boundary, or a migration.
+  - Check for missing indexes on columns used in WHERE/JOIN/ORDER BY, and for N+1 query patterns from loading relations in a loop.
+  - Wrap multi-step writes that must succeed or fail together in a transaction; consider isolation level and lock contention for concurrent writers.
+  - Verify a new migration is additive and backward-compatible with the currently running application (no destructive column drops without a rollout plan).
+  - Verify with EXPLAIN ANALYZE on the changed query or the project's query/integration test suite when available.
+related_skills:
+  - typeorm
+  - prisma
+  - nestjs

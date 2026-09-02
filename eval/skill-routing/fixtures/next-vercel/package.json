@@ -1,0 +1,8 @@
+{
+  "name": "fixture-next-vercel",
+  "dependencies": {
+    "next": "^15.0.0",
+    "react": "^19.0.0",
+    "vercel": "^40.0.0"
+  }
+}

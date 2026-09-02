@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "ctx-mcp": {
+      "command": "node",
+      "args": [
+        "./mcp/server.js"
+      ]
+    }
+  }
+}

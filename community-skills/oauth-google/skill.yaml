@@ -1,0 +1,22 @@
+id: oauth-google
+name: Google OAuth
+description: Implement and debug Google OAuth login, OAuth callback routes, Auth.js, NextAuth, Passport providers, and social sign-in.
+positive_triggers:
+  prompts: [oauth, google login, google sign in, callback, social login, auth provider]
+  files: [auth.config.ts, auth.ts, pages/api/auth/*, app/api/auth/*]
+  dependencies: [next-auth, @auth/core, passport-google-oauth20]
+evidence:
+  files: [auth.config.ts, auth.ts, pages/api/auth/*, app/api/auth/*, .env.example]
+  dependencies: [next-auth, @auth/core, passport, passport-google-oauth20]
+negative_triggers:
+  prompts: [jwt only, password login, refresh token only]
+  dependencies: [jsonwebtoken]
+workflow:
+  - Inspect provider config, callback URLs, scopes, secrets, and session creation.
+  - Verify frontend login entrypoints and backend callback routes agree.
+  - Patch the smallest auth boundary while preserving session conventions.
+  - Verify with focused auth tests, typecheck, or local callback flow.
+related_skills:
+  - jwt-auth
+  - env-secret-management
+  - auth-implementation-patterns

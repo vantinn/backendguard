@@ -1,0 +1,24 @@
+id: nestjs
+name: NestJS Architecture
+description: Structure NestJS modules, controllers, providers, guards, interceptors, pipes, and exception filters correctly.
+positive_triggers:
+  prompts: [nestjs, module, controller, provider, service, guard, interceptor, pipe, exception filter, dependency injection, decorator, dto]
+  files: ["*.module.ts", "*.controller.ts", "*.service.ts", "*.guard.ts", "*.interceptor.ts", "*.pipe.ts"]
+  dependencies: ["@nestjs/core", "@nestjs/common"]
+evidence:
+  files: ["*.module.ts", "*.controller.ts", nest-cli.json]
+  dependencies: ["@nestjs/core", "@nestjs/common"]
+negative_triggers:
+  prompts: [react component, css styling, static site]
+  dependencies: [next, react-native]
+workflow:
+  - Confirm the module boundary: identify which NestJS module owns this controller/provider and whether a new module is warranted.
+  - Use constructor-based dependency injection; avoid manually instantiating providers or reaching across module boundaries without an explicit export/import.
+  - Apply guards, interceptors, and pipes at the correct scope (route, controller, or global) instead of duplicating checks inline.
+  - Return response DTOs from controllers, never ORM entities directly.
+  - Use NestJS's built-in exception filters (HttpException subclasses) instead of throwing raw errors from controllers.
+  - Verify with the project's test command (nest test / jest) for the affected module.
+related_skills:
+  - security
+  - postgresql
+  - typeorm

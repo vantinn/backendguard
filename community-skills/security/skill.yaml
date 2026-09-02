@@ -1,0 +1,22 @@
+id: security
+name: Backend Security
+description: Enforce authentication, authorization, input validation, secret handling, and data-exposure guardrails on backend API endpoints.
+positive_triggers:
+  prompts: [password, secret, token, jwt, auth, authorization, rbac, permission, encrypt, hash, sanitize, injection, sql injection, cors, rate limit, csrf, xss, credential, api key, brute force]
+  files: ["*.guard.ts", "*.strategy.ts", auth.service.ts, .env.example]
+  dependencies: [bcrypt, argon2, helmet, "@nestjs/throttler", class-validator, jsonwebtoken]
+evidence:
+  files: ["*.guard.ts", auth.service.ts, .env.example]
+  dependencies: [bcrypt, argon2, helmet, "@nestjs/throttler"]
+negative_triggers:
+  prompts: [pure css styling, static copy edit, color palette]
+  dependencies: [tailwindcss]
+workflow:
+  - Identify whether the change touches authentication, authorization, input handling, secrets, or response payloads.
+  - Check password/secret storage (hashed, never logged or returned), token expiry, and RBAC checks at the service boundary, not just the route.
+  - Confirm DTO validation on every input and that sensitive fields (password hash, tokens, refresh tokens, secrets) never leave the API in a response.
+  - Patch the smallest security boundary and add or adjust a focused test that would fail without the fix.
+related_skills:
+  - jwt-auth
+  - nestjs
+  - postgresql

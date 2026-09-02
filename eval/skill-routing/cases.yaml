@@ -1,0 +1,366 @@
+skills:
+  - id: eas
+    description: Fix Expo EAS builds, submit, Android and iOS deployment failures.
+    positive_triggers:
+      prompts: [eas, expo build, deployed, deploy, android, ios, submit]
+      files: [eas.json, app.json, app.config.ts]
+      dependencies: [expo, eas-cli, react-native]
+    negative_triggers:
+      dependencies: [next, vite]
+  - id: mobile-deployment
+    description: Debug mobile app deployment, app store release, EAS, Flutter, Android, and iOS build pipelines.
+    positive_triggers:
+      prompts: [deployed, deploy, mobile, android, ios, release, signing]
+      files: [eas.json, app.json, pubspec.yaml]
+      dependencies: [expo, react-native, firebase_core]
+  - id: github-actions-ci-cd
+    description: Debug GitHub Actions CI/CD workflows and deployment build logs.
+    positive_triggers:
+      prompts: [deployed, deploy, ci, build failed, github actions, workflow]
+      files: [.github/workflows/*]
+      dependencies: [expo, eas-cli, react-native, next, vercel]
+  - id: env-secret-management
+    description: Fix deployment environment variables, secrets, API keys, and runtime config.
+    positive_triggers:
+      prompts: [env, secret, environment, api key, deployed]
+      files: [.env, .env.example]
+      dependencies: [next, vercel]
+  - id: build-log-debugging
+    description: Debug build logs, failed deployments, startup failures, and CI errors.
+    positive_triggers:
+      prompts: [failed, error, build, logs, startup]
+      files: [.github/workflows/*, Dockerfile, railway.json, render.yaml, vercel.json, eas.json]
+      dependencies: [next, vercel, express, @nestjs/core]
+  - id: vercel-deployment
+    description: Fix Vercel and Next.js deployment failures.
+    positive_triggers:
+      prompts: [vercel, deployed, deploy]
+      files: [vercel.json, next.config.js, next.config.ts]
+      dependencies: [next, vercel]
+    negative_triggers:
+      dependencies: [expo, react-native]
+      files: [eas.json]
+  - id: docker
+    description: Build and debug Docker images, Dockerfile, compose services, container startup, and deployment.
+    positive_triggers:
+      prompts: [docker, container, image, deployed, deploy]
+      files: [Dockerfile, docker-compose.yml]
+  - id: railway-render-deployment
+    description: Deploy Node services to Railway or Render, fix service deploy config, ports, and health checks.
+    positive_triggers:
+      prompts: [railway, render, deployed, deploy, health check]
+      files: [railway.json, render.yaml]
+  - id: firebase-hosting
+    description: Deploy web or mobile apps to Firebase Hosting and configure firebase.json.
+    positive_triggers:
+      prompts: [firebase, hosting, deployed, deploy]
+      files: [firebase.json]
+      dependencies: [firebase]
+  - id: prisma
+    description: Debug Prisma schema, migrations, generated client, and ORM queries.
+    positive_triggers:
+      prompts: [prisma, migration, database, query]
+      files: [prisma/schema.prisma]
+      dependencies: [prisma, @prisma/client]
+  - id: nestjs-module
+    description: Build and debug NestJS modules, controllers, providers, Fastify adapters, and Prisma service integration.
+    positive_triggers:
+      prompts: [nestjs, controller, module, fastify, prisma, query, guard]
+      dependencies: [@nestjs/core, @nestjs/platform-fastify]
+  - id: express-service
+    description: Build and debug Express services, middleware, API routes, and Node HTTP servers.
+    positive_triggers:
+      prompts: [express, middleware, api, service, route]
+      dependencies: [express]
+  - id: mongodb
+    description: Work with MongoDB and Mongoose models, schemas, aggregation pipelines, and queries.
+    positive_triggers:
+      prompts: [mongodb, mongo, mongoose, aggregation]
+      dependencies: [mongoose, mongodb]
+  - id: redis-cache
+    description: Add and debug Redis caching, cache invalidation, TTLs, sessions, and rate limits.
+    positive_triggers:
+      prompts: [redis, cache, caching, ttl]
+      dependencies: [redis, ioredis]
+  - id: jwt-auth
+    description: Implement and debug JWT authentication, refresh tokens, access tokens, and login authorization.
+    positive_triggers:
+      prompts: [jwt, auth, token, login, refresh]
+      dependencies: [jsonwebtoken]
+  - id: oauth-google
+    description: Implement Google OAuth login, OAuth callback routes, NextAuth, Auth.js, and social sign in.
+    positive_triggers:
+      prompts: [oauth, google, login, callback, sign in]
+      dependencies: [next-auth, @auth/core, passport-google-oauth20]
+  - id: rbac
+    description: Implement role-based access control, permissions, admin/creator roles, guards, and policies.
+    positive_triggers:
+      prompts: [rbac, role, permission, admin, creator, guard]
+      dependencies: [@nestjs/core, casl]
+  - id: password-reset
+    description: Implement password reset flows, email tokens, OTPs, and account recovery.
+    positive_triggers:
+      prompts: [password reset, forgot password, reset token, otp]
+      dependencies: [nodemailer, jsonwebtoken]
+  - id: jest-testing
+    description: Write and fix Jest unit tests, mocks, snapshots, and TypeScript test failures.
+    positive_triggers:
+      prompts: [jest, unit test, mock, snapshot, test]
+      files: [jest.config.js, jest.config.ts]
+      dependencies: [jest, ts-jest, vitest]
+  - id: integration-testing
+    description: Write integration tests for APIs, services, databases, and Supertest HTTP flows.
+    positive_triggers:
+      prompts: [integration test, supertest, api test, e2e]
+      dependencies: [supertest, jest, express]
+  - id: playwright-e2e
+    description: Write and debug Playwright E2E browser tests, locators, fixtures, and traces.
+    positive_triggers:
+      prompts: [playwright, e2e, browser test, locator, trace]
+      files: [playwright.config.js, playwright.config.ts]
+      dependencies: [@playwright/test]
+  - id: flutter-firebase
+    description: Build Flutter apps with Firebase configuration and deployment.
+    positive_triggers:
+      prompts: [flutter, firebase, deploy]
+      files: [pubspec.yaml, firebase.json]
+      dependencies: [firebase_core]
+    negative_triggers:
+      prompts: [hosting, web]
+  - id: android-signing
+    description: Fix Android signing, keystore, release builds, Gradle signing config, and Play Store deploys.
+    positive_triggers:
+      prompts: [android signing, keystore, play store, release build, gradle]
+      files: [eas.json, app.json]
+      dependencies: [expo, react-native]
+    negative_triggers:
+      prompts: [ios, submit]
+cases:
+  - prompt: fix deployed
+    fixture: expo-eas
+    expected: [eas, mobile-deployment, github-actions-ci-cd]
+    rejected: [vercel-deployment]
+  - prompt: EAS build failed for android preview
+    fixture: expo-eas
+    expected: [eas, mobile-deployment, build-log-debugging]
+    allowed: [github-actions-ci-cd]
+    rejected: [vercel-deployment]
+  - prompt: configure ios production submit
+    fixture: expo-eas
+    expected: [eas, mobile-deployment]
+    allowed: [github-actions-ci-cd]
+    rejected: [vercel-deployment]
+  - prompt: android build cannot find keystore
+    fixture: expo-eas
+    expected: [android-signing, eas, mobile-deployment]
+    rejected: [vercel-deployment]
+  - prompt: mobile release channel deploy failed
+    fixture: expo-eas
+    expected: [mobile-deployment, eas, build-log-debugging]
+    allowed: [github-actions-ci-cd]
+    rejected: [vercel-deployment]
+  - prompt: fix deployed
+    fixture: next-vercel
+    expected: [vercel-deployment, github-actions-ci-cd, env-secret-management]
+    rejected: [eas]
+  - prompt: Vercel production deployment failed
+    fixture: next-vercel
+    expected: [vercel-deployment, env-secret-management, build-log-debugging]
+    allowed: [github-actions-ci-cd]
+    rejected: [eas]
+  - prompt: GitHub Actions deploy to Vercel is failing
+    fixture: next-vercel
+    expected: [github-actions-ci-cd, vercel-deployment, env-secret-management]
+    allowed: [build-log-debugging]
+    rejected: [eas]
+  - prompt: environment variable missing during deploy
+    fixture: next-vercel
+    expected: [env-secret-management, vercel-deployment]
+    allowed: [github-actions-ci-cd, build-log-debugging]
+    rejected: [eas]
+  - prompt: next app deployed but build logs fail
+    fixture: next-vercel
+    expected: [vercel-deployment, build-log-debugging]
+    allowed: [github-actions-ci-cd, env-secret-management]
+    rejected: [eas]
+  - prompt: docker image build failed
+    fixture: docker-node
+    expected: [docker, build-log-debugging]
+    rejected: [eas, vercel-deployment]
+  - prompt: fix container deploy
+    fixture: docker-node
+    expected: [docker]
+    allowed: [build-log-debugging]
+    rejected: [eas, vercel-deployment]
+  - prompt: docker compose service cannot start
+    fixture: docker-node
+    expected: [docker, express-service]
+    allowed: [build-log-debugging]
+    rejected: [eas, vercel-deployment]
+  - prompt: Railway deploy health check failed
+    fixture: railway-render
+    expected: [railway-render-deployment, build-log-debugging]
+    rejected: [eas, vercel-deployment]
+  - prompt: render service deploy port not detected
+    fixture: railway-render
+    expected: [railway-render-deployment, express-service]
+    allowed: [build-log-debugging]
+    rejected: [eas, vercel-deployment]
+  - prompt: deploy firebase hosting
+    fixture: firebase-hosting
+    expected: [firebase-hosting]
+    rejected: [eas, vercel-deployment]
+  - prompt: firebase hosting rewrite not working
+    fixture: firebase-hosting
+    expected: [firebase-hosting]
+    rejected: [eas, vercel-deployment]
+  - prompt: fix deployed
+    fixture: backendguard
+    expected: []
+    rejected: [eas, vercel-deployment, firebase-hosting]
+  - prompt: fix auth
+    fixture: frontend-only-next
+    expected: []
+    rejected: [jwt-auth, oauth-google, rbac]
+  - prompt: add cache
+    fixture: static-docs
+    expected: []
+    rejected: [redis-cache]
+  - prompt: deploy app
+    fixture: expo-with-vercel-json
+    expected: [eas, mobile-deployment]
+    allowed: [github-actions-ci-cd, build-log-debugging]
+    rejected: [vercel-deployment]
+  - prompt: optimize slow prisma queries
+    fixture: nest-prisma
+    expected: [prisma, nestjs-module]
+    rejected: [eas, vercel-deployment]
+  - prompt: prisma migration failed
+    fixture: nest-prisma
+    expected: [prisma, nestjs-module]
+    allowed: [build-log-debugging]
+    rejected: [mongodb]
+  - prompt: add database migration for users
+    fixture: nest-prisma
+    expected: [prisma]
+    rejected: [mongodb]
+  - prompt: Fastify adapter bootstrap error in NestJS
+    fixture: nest-prisma
+    expected: [nestjs-module, build-log-debugging]
+    rejected: [eas, vercel-deployment]
+  - prompt: controller route cannot access prisma service
+    fixture: nest-prisma
+    expected: [nestjs-module, prisma]
+    rejected: [mongodb]
+  - prompt: mongodb aggregation pipeline is slow
+    fixture: express-mongo-jwt
+    expected: [mongodb]
+    allowed: [express-service]
+    rejected: [prisma]
+  - prompt: mongoose schema validation bug
+    fixture: express-mongo-jwt
+    expected: [mongodb]
+    rejected: [prisma]
+  - prompt: debug jwt refresh token
+    fixture: express-mongo-jwt
+    expected: [jwt-auth]
+    allowed: [express-service]
+    rejected: [oauth-google]
+  - prompt: login token expires too early
+    fixture: express-mongo-jwt
+    expected: [jwt-auth]
+    rejected: [oauth-google]
+  - prompt: add express middleware for auth
+    fixture: express-mongo-jwt
+    expected: [express-service, jwt-auth]
+    rejected: [eas]
+  - prompt: implement google oauth callback
+    fixture: oauth-google
+    expected: [oauth-google]
+    rejected: [jwt-auth]
+  - prompt: google sign in redirects wrong URL
+    fixture: oauth-google
+    expected: [oauth-google]
+    allowed: [env-secret-management]
+    rejected: [eas]
+  - prompt: nextauth oauth secret missing
+    fixture: oauth-google
+    expected: [oauth-google, env-secret-management]
+    rejected: [eas]
+  - prompt: implement RBAC admin creator permissions
+    fixture: rbac-api
+    expected: [rbac, nestjs-module]
+    rejected: [eas]
+  - prompt: role guard blocks creator route
+    fixture: rbac-api
+    expected: [rbac, nestjs-module]
+    rejected: [jwt-auth]
+  - prompt: permission policy for admin dashboard
+    fixture: rbac-api
+    expected: [rbac]
+    rejected: [eas]
+  - prompt: forgot password email not sent
+    fixture: password-reset
+    expected: [password-reset]
+    allowed: [express-service]
+    rejected: [oauth-google]
+  - prompt: reset token expired too soon
+    fixture: password-reset
+    expected: [password-reset, jwt-auth]
+    rejected: [oauth-google]
+  - prompt: add redis cache for catalog
+    fixture: redis-cache
+    expected: [redis-cache]
+    allowed: [express-service]
+    rejected: [prisma]
+  - prompt: cache TTL invalidation bug
+    fixture: redis-cache
+    expected: [redis-cache]
+    rejected: [eas]
+  - prompt: redis session cache fails
+    fixture: redis-cache
+    expected: [redis-cache]
+    rejected: [mongodb]
+  - prompt: fix jest unit test mocks
+    fixture: jest-project
+    expected: [jest-testing]
+    rejected: [playwright-e2e]
+  - prompt: snapshot test failed in jest
+    fixture: jest-project
+    expected: [jest-testing]
+    rejected: [playwright-e2e]
+  - prompt: missing supertest dependency in integration test
+    fixture: integration-test
+    expected: [integration-testing, jest-testing]
+    rejected: [playwright-e2e]
+  - prompt: API integration test cannot hit express route
+    fixture: integration-test
+    expected: [integration-testing, express-service]
+    allowed: [jest-testing]
+    rejected: [playwright-e2e]
+  - prompt: playwright e2e login test fails
+    fixture: playwright-project
+    expected: [playwright-e2e]
+    rejected: [jest-testing]
+  - prompt: browser locator timeout in checkout e2e
+    fixture: playwright-project
+    expected: [playwright-e2e]
+    rejected: [integration-testing]
+  - prompt: deploy flutter firebase app
+    fixture: flutter-firebase
+    expected: [flutter-firebase, mobile-deployment]
+    rejected: [eas, vercel-deployment]
+  - prompt: firebase core not initialized in flutter
+    fixture: flutter-firebase
+    expected: [flutter-firebase]
+    allowed: [mobile-deployment]
+    rejected: [vercel-deployment]
+  - prompt: android signing config for release build
+    fixture: expo-eas
+    expected: [android-signing, mobile-deployment, eas]
+    rejected: [vercel-deployment]
+  - prompt: react native eas submit failed
+    fixture: expo-eas
+    expected: [eas, mobile-deployment]
+    allowed: [github-actions-ci-cd, build-log-debugging]
+    rejected: [vercel-deployment]

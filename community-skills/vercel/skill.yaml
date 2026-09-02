@@ -1,0 +1,22 @@
+id: vercel
+name: Vercel Deployment
+description: Fix Vercel and Next.js deployment failures.
+positive_triggers:
+  prompts: [vercel, deployed, deploy, production, preview, build failed, environment variable]
+  files: [vercel.json, next.config.js, next.config.ts]
+  dependencies: [next, vercel]
+evidence:
+  files: [vercel.json, next.config.js, next.config.ts, .github/workflows/*]
+  dependencies: [next, vercel, react]
+negative_triggers:
+  dependencies: [expo, react-native, eas-cli]
+  files: [eas.json, app.json]
+workflow:
+  - Inspect Vercel config, Next config, package scripts, and deploy logs.
+  - Check build command, output directory, env vars, runtime, and route config.
+  - Patch the minimal config or code path that explains the failure.
+  - Verify with the project build command.
+related_skills:
+  - github-actions-ci-cd
+  - env-secret-management
+  - build-log-debugging

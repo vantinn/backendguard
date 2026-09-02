@@ -1,0 +1,22 @@
+id: jwt-auth
+name: JWT Auth
+description: Implement and debug JWT authentication, refresh tokens, access tokens, guards, middleware, and login authorization.
+positive_triggers:
+  prompts: [jwt, auth, token, access token, refresh token, bearer, login, guard, middleware]
+  files: [auth.guard.ts, jwt.strategy.ts, middleware.ts]
+  dependencies: [jsonwebtoken, jose, @nestjs/jwt, passport-jwt]
+evidence:
+  files: [auth.guard.ts, jwt.strategy.ts, middleware.ts, .env.example]
+  dependencies: [jsonwebtoken, jose, @nestjs/jwt, passport-jwt]
+negative_triggers:
+  prompts: [google oauth, social login, saml]
+  dependencies: [next-auth, @auth/core, passport-google-oauth20]
+workflow:
+  - Inspect signing, verification, expiry, refresh rotation, and guard or middleware wiring.
+  - Confirm token storage and client authorization headers.
+  - Patch the narrow auth boundary without changing unrelated authorization policy.
+  - Verify with focused auth tests and typecheck.
+related_skills:
+  - security
+  - oauth-google
+  - nestjs

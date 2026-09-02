@@ -1,0 +1,20 @@
+id: example-skill
+name: Example Skill
+description: Replace this with a concise skill description.
+positive_triggers:
+  prompts: [example task, example failure]
+  files: [example.config.js]
+  dependencies: [example-package]
+evidence:
+  files: [example.config.js]
+  dependencies: [example-package]
+negative_triggers:
+  prompts: [unrelated task]
+  files: [wrong.config.js]
+  dependencies: [wrong-package]
+workflow:
+  - Confirm project evidence before selecting this skill.
+  - Inspect the smallest relevant files.
+  - Make the targeted change.
+  - Run focused verification.
+related_skills: []

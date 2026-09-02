@@ -1,0 +1,6 @@
+{
+  "name": "fixture-docker-node",
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

@@ -1,0 +1,23 @@
+id: eas
+name: Expo EAS Deployment
+description: Fix Expo EAS builds, submit, Android and iOS deployment failures.
+positive_triggers:
+  prompts: [eas, expo build, deployed, deploy, android, ios, submit, preview, production, qr, connect]
+  files: [eas.json, app.json, app.config.js, app.config.ts]
+  dependencies: [expo, eas-cli, expo-router, react-native]
+evidence:
+  files: [eas.json, app.json, app.config.js, app.config.ts, .github/workflows/*]
+  dependencies: [expo, eas-cli, expo-router, react-native]
+negative_triggers:
+  dependencies: [next, vite, vercel]
+  files: [vercel.json, next.config.js, next.config.ts]
+workflow:
+  - Inspect EAS profiles, app config, package scripts, and CI workflows.
+  - Classify the failure as credentials, build profile, native dependency, bundling, or submit config.
+  - Patch only the config or package boundary that matches the log.
+  - Verify with the relevant Expo or EAS command.
+related_skills:
+  - mobile-deployment
+  - github-actions-ci-cd
+  - env-secret-management
+  - build-log-debugging

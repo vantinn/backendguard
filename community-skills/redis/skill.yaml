@@ -1,0 +1,23 @@
+id: redis
+name: Redis
+description: Add and debug Redis cache, TTL, sessions, rate limits, queues, and pub/sub behavior.
+positive_triggers:
+  prompts: [redis, cache, caching, ttl, session, rate limit, queue, bullmq, invalidation]
+  files: [redis.conf, docker-compose.yml]
+  dependencies: [redis, ioredis, bullmq, cache-manager-redis-store]
+evidence:
+  files: [redis.conf, docker-compose.yml, docker-compose.yaml]
+  dependencies: [redis, ioredis, bullmq, cache-manager, cache-manager-redis-store]
+negative_triggers:
+  prompts: [browser cache, next cache, static cache]
+  dependencies: [swr]
+workflow:
+  - Inspect client setup, cache keys, TTLs, and invalidation paths.
+  - Identify whether Redis backs cache, queue, session, rate limit, or pub/sub behavior.
+  - Patch the smallest service boundary while preserving key conventions.
+  - Verify with focused tests or a command that exercises the Redis path.
+related_skills:
+  - nestjs
+  - security
+  - performance-optimization
+  - observability

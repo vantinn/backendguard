@@ -1,0 +1,25 @@
+$ ctx benchmark -- "fix failing test"
+BackendGuard benchmark
+
+Summary
+-------
+Metric                Value
+--------------------  -------------------------
+Task                  fix failing test
+Rules parsed          7
+Actionable rules      5
+Filtered rules        2
+Relevant rules        1
+Baseline middle-risk  1/1 relevant rules (100%)
+BackendGuard scheduled   1 high, 0 mid
+Recency reminder      enabled
+
+Top Rules
+---------
+Score  Rule                                                                                      Reasons
+-----  ----------------------------------------------------------------------------------------  ----------
+0.50   IMPORTANT: This project has a knowledge graph. ALWAYS use code-review-graph MCP tools...  imperative
+0.00   AGENTS.md
+0.00   Centralised AI agent instructions. Add coding guidelines, style guides, and project c...
+0.00   Ruler concatenates all .md files in this directory (and subdirectories), starting wit...
+0.00   Use `query_graph` pattern="tests_for" to check coverage.

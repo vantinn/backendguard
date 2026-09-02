@@ -1,0 +1,7 @@
+{
+  "name": "fixture-redis-cache",
+  "dependencies": {
+    "express": "^4.18.0",
+    "redis": "^4.6.0"
+  }
+}

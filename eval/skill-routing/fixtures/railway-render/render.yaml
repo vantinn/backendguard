@@ -1,0 +1,5 @@
+services:
+  - type: web
+    name: api
+    runtime: node
+    startCommand: node server.js

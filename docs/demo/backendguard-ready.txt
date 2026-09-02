@@ -1,0 +1,14 @@
+$ ctx doctor
+Repository Score
+
+Rules: 100
+Skills: 100
+Workflows: 100
+
+Overall:
+BackendGuard Ready Gold
+
+Evidence:
+- Rules: 1 AGENTS.md source(s), 5 actionable rule(s)
+- Skills: 3 skill(s), 3 metadata file(s)
+- Workflows: 2 workflow(s), 2 with agent chain(s)
