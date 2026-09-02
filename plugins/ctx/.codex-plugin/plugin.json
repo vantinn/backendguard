@@ -1,6 +1,6 @@
 {
   "name": "ctx",
-  "version": "0.7.0",
+  "version": "0.8.0",
   "description": "Backend engineering guardrails for Codex: task-aware security/architecture/database context plus post-task compliance reporting for NestJS, PostgreSQL, TypeORM, and Prisma.",
   "author": {
     "name": "BackendGuard"
