@@ -15,7 +15,7 @@ import {
 } from "../ast-utils.js";
 import { createFinding } from "../finding.js";
 import { buildSourceIndex } from "../source-index.js";
-import { classifySecretLiteral } from "./secret-detection.js";
+import { classifySecretLiteral, matchesKnownCredentialFormat } from "./secret-detection.js";
 
 /**
  * Structural security analysis for NestJS/Express TypeScript backends.
@@ -123,6 +123,44 @@ function checkMissingGuards({ sourceFile, relativePath }) {
 
 function checkHardcodedSecrets({ sourceFile, relativePath }) {
   const findings = [];
+  const reported = new Set();
+
+  const report = ({ node, confidence, reason, name }) => {
+    // One literal, one finding: a key assigned once and referenced later must
+    // not be counted twice, and the two passes below can reach the same node.
+    const key = `${node.getStart(sourceFile)}`;
+    if (reported.has(key)) return;
+    reported.add(key);
+    findings.push(createFinding({
+      id: "SEC-003",
+      category: "Security",
+      severity: "HIGH",
+      confidence,
+      analyzer: ANALYZER_ID,
+      title: "Hardcoded credential",
+      detail: name
+        ? `Property "${name}" is assigned a literal credential: ${reason}. It lives in version control and in every build artefact.`
+        : `A literal credential is committed here: ${reason}. It lives in version control and in every build artefact.`,
+      remediation: "Read this value from process.env (or a ConfigService) instead of hardcoding it, and rotate the committed credential — it must be treated as compromised.",
+      sourceFile,
+      node,
+      file: relativePath
+    }));
+  };
+
+  // Pass 1: any string literal whose *format* identifies it as a credential.
+  // Issuer-defined formats cannot collide with an env var or header name, so
+  // they need no corroborating property name — and a real leak is written as
+  // `const STRIPE_KEY = "sk_live_..."`, which the property-name pass misses.
+  const visitLiterals = (node) => {
+    if (ts.isStringLiteralLike(node)) {
+      const match = matchesKnownCredentialFormat(node.text);
+      if (match) report({ node, confidence: "certain", reason: `the value matches the format of ${match.what}` });
+    }
+    ts.forEachChild(node, visitLiterals);
+  };
+  visitLiterals(sourceFile);
+
   const visit = (node) => {
     if (ts.isPropertyAssignment(node)) {
       const name = propertyName(node);
@@ -133,19 +171,7 @@ function checkHardcodedSecrets({ sourceFile, relativePath }) {
         // under exactly these keys. The *value* has to look like a credential.
         const verdict = classifySecretLiteral(initializer.text, { propertyName: name });
         if (verdict.isCredential) {
-          findings.push(createFinding({
-            id: "SEC-003",
-            category: "Security",
-            severity: "HIGH",
-            confidence: verdict.confidence,
-            analyzer: ANALYZER_ID,
-            title: "Hardcoded credential",
-            detail: `Property "${name}" is assigned a literal credential: ${verdict.reason}. It lives in version control and in every build artefact.`,
-            remediation: "Read this value from process.env (or a ConfigService) instead of hardcoding it, and rotate the committed credential — it must be treated as compromised.",
-            sourceFile,
-            node,
-            file: relativePath
-          }));
+          report({ node: initializer, confidence: verdict.confidence, reason: verdict.reason, name });
         }
       }
     }

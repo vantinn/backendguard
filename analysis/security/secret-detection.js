@@ -95,6 +95,40 @@ export function isDirectCredentialProperty(name) {
 }
 
 /**
+ * A literal whose *format* identifies it as a credential, independent of what
+ * it is assigned to.
+ *
+ * These patterns are issuer-defined and cannot collide with an environment
+ * variable name, a header name or a path, which is why they need no
+ * corroborating property name — and why the analyzer must consult them for
+ * every string literal, not only for object properties whose key happened to
+ * be on a short list. `export const STRIPE_KEY = "sk_live_..."`, the shape a
+ * real leak actually takes, was silently ignored.
+ *
+ * @returns {{what: string}|null}
+ */
+export function matchesKnownCredentialFormat(value) {
+  const text = String(value ?? "").trim();
+  if (!text || PLACEHOLDER.test(text)) return null;
+  for (const { pattern, what } of KNOWN_CREDENTIAL_FORMATS) {
+    if (pattern.test(text)) return { what };
+  }
+  if (URI_WITH_CREDENTIALS.test(text) && !isLocalCredentialUri(text)) {
+    return { what: "a connection URI with an embedded password" };
+  }
+  return null;
+}
+
+/**
+ * `postgres://postgres:postgres@localhost:5432/dev` is a local development
+ * default that appears in nearly every backend README. Reporting it as a
+ * committed credential is the noise this module exists to avoid.
+ */
+function isLocalCredentialUri(text) {
+  return /@(localhost|127\.0\.0\.1|\[::1\]|0\.0\.0\.0|host\.docker\.internal|db|postgres|mysql|redis|mongo)(:\d+)?([/?]|$)/i.test(text);
+}
+
+/**
  * @param {string} value the string literal assigned to a secret-named property
  * @param {{propertyName?: string}} context the property it was assigned to
  * @returns {{isCredential: boolean, confidence: "certain"|"high", reason: string}
