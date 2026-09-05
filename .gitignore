@@ -2,6 +2,9 @@ node_modules/
 coverage/
 *.log
 
+# Locally built npm artefacts (`npm pack`)
+*.tgz
+
 # BackendGuard runtime state (written into whatever project the tool runs in)
 .backendguard/
 *.backendguard-mcp**

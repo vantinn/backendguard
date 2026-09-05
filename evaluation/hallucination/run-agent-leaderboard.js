@@ -182,8 +182,7 @@ function findBinary(name) {
     path.join(os.homedir(), ".local", "bin", safeName),
     path.join(os.homedir(), ".npm-global", "bin", safeName),
     path.join(os.homedir(), ".nvm", "current", "bin", safeName),
-    `/mnt/c/Users/admin/AppData/Roaming/npm/${safeName}`,
-    `/mnt/c/Users/admin/AppData/Roaming/npm/${safeName}.cmd`
+    ...windowsNpmCandidates(safeName)
   ];
   for (const candidate of candidates) {
     if (fs.existsSync(candidate)) return candidate;
@@ -213,6 +212,20 @@ function firstReason(rows) {
 
 function normalize(value) {
   return String(value || "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/**
+ * npm's global bin on Windows, including the WSL view of it.
+ *
+ * These used to be hardcoded against one developer's Windows username, which
+ * resolves for nobody else. Derive them from the environment instead.
+ */
+function windowsNpmCandidates(name) {
+  const roots = [];
+  if (process.env.APPDATA) roots.push(path.join(process.env.APPDATA, "npm"));
+  const winUser = process.env.WSL_USER || process.env.USERNAME;
+  if (winUser) roots.push(`/mnt/c/Users/${winUser}/AppData/Roaming/npm`);
+  return roots.flatMap((root) => [path.join(root, name), path.join(root, `${name}.cmd`)]);
 }
 
 function shellQuote(value) {
