@@ -6,6 +6,45 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 > **Note:** this file was recreated from scratch. The project's release history prior to this entry was not available to reconstruct accurately, and this changelog does not fabricate it. Entries from this point forward are accurate.
 
+## [0.9.2] - 2026-09-06
+
+Post-release fixes for problems users hit while installing 0.9.1 into real backend projects, plus the additional faults found while auditing the paths those reports pointed at. No breaking changes: every command and flag documented for 0.9.1 still works.
+
+### Fixed
+
+- **`backendguard sync --skills` crashed with `ReferenceError: spawn is not defined`.** The function that streams the skillshare installer's output called `spawn` without importing it, so *every* skillshare auto-install failed before the installer started — and because a `ReferenceError` is an internal fault, the CLI correctly but unhelpfully answered "This is a bug in BackendGuard". Streaming now goes through a shared `spawnStreaming` helper in `runtime/shell-runner.js`, which also handles a missing executable, a permission error, a non-zero exit, a signal and a timeout.
+- **`backendguard install claude` did nothing and exited 0.** The positional agent form is documented in the README, but only `--agent`/`--agents` were implemented; the positional argument was ignored, the command fell through to the interactive prompt, and with no TTY and nothing preselected it installed nothing and reported success. `install <agent>` now works, alongside both flag forms.
+- **The interactive agent prompt started with nothing selected.** Pressing Enter produced an empty selection. Agents already present on the machine are now preselected (`~/.claude`, `~/.codex`, …); when none are found, Codex is. The prompt states what Space does and how many items are selected.
+- **An empty agent selection was only detected at the very end of the setup wizard.** `backendguard setup` asked about Ruler, skillshare, prompt sections and starter context, printed its full plan, and only then failed — with a bare `Error`, so the run ended in exit code 70 and "This is a bug in BackendGuard". Selection is now validated immediately after the prompt, and before anything is printed or written in non-interactive runs. It exits 2 with instructions.
+- **An unknown agent name was reported as an internal bug, after side effects.** `backendguard install bogus` printed "Installing bogus...", copied the package, and *then* failed with exit 70. Agent names are validated before any file is written, and an unknown name exits 2. `--agents ""` no longer silently installs nothing and exits 0.
+- **A failing optional integration aborted the whole setup.** A skillshare failure discarded a completed Ruler and agent install. Ruler, skillshare and each agent install are now run as individually recoverable steps: failures are collected and listed under "ready, with skipped steps", and the run continues. A setup where no agent could be installed still fails.
+- **A missing third-party CLI was reported as a BackendGuard bug.** `spawnSync skillshare ENOENT` reached the user as exit 70. `runProcess` now classifies `ENOENT`/`EACCES` as an environment error naming the command and how to install it.
+- **A malformed user config was either a crash or silent data loss.** `~/.claude.json` was parsed with no guard, so invalid JSON crashed the install with exit 70; the other five config readers caught the error and **overwrote the file with defaults**, discarding whatever the user had — `~/.claude.json` holds every project Claude Code knows about. All six now share `readJsonConfig`, which leaves the file untouched and reports a `ConfigurationError` naming it.
+- **One malformed source file aborted the entire analysis.** The TypeScript parser is recursive, so an expression nested a few thousand levels deep overflowed the stack and `backendguard analyze` failed with "Maximum call stack size exceeded" — a denial of service reachable from any analyzed repository. Parsing is now isolated per file: the bad file is skipped and named, the rest are analyzed.
+- **Files skipped during analysis were not reported.** Files too large to read were dropped silently, so a partial analysis looked like a clean one. `analyze` now prints a "Not analyzed" line per reason.
+- **`backendguard sync --rules --yes`, `--skills --yes` and `--rules --force` were rejected as unknown options.** All three are implemented, and `--force` is documented, but none were declared, so the flag validator rejected them with exit 2 — which made the non-interactive sync path unusable in CI. They are now declared and covered by tests.
+- **`backendguard rules doctor` without a task, and `report`/`evidence` with no stored report, exited 70 as internal bugs.** They now exit 2 and 3 respectively, with a hint.
+- **Ctrl+C at a selection prompt exited 0.** A cancelled setup reported success to any script wrapping it. Cancelling now exits 130.
+- The two branches of the multi-select prompt disagreed on what an option with no explicit `selected` meant; both now read it the same way.
+- The agent leaderboard's binary lookup contained a hardcoded Windows path with one developer's username. It is derived from the environment instead.
+
+### Changed
+
+- Agent names, aliases and the supported-agent list live in one module, `runtime/agents.js`, instead of being written down separately in the install command, the setup wizard and two normalizer functions that disagreed.
+- `ConfigurationError` and `IntegrationError` join `UsageError` and `EnvironmentError`, so a malformed user config and a third-party tool's failure are classified as what they are. Only genuine BackendGuard faults are reported as bugs.
+- `backendguard install --help` documents the positional agent form.
+
+### Documentation
+
+- The README documented `backendguard install --quiet` and `--inject`, neither of which was ever implemented; both were rejected with exit 2. Prompt injection is always on, and the section now says so.
+- The install section documents the positional form, the prompt's preselection behaviour, and that selecting nothing is a usage error.
+
+### Testing
+
+- `tests/post-release-0.9.2-regressions.test.js` adds 60 tests covering each bug above, driving the CLI as a process so the exit code and the absence of "This is a bug in BackendGuard" are asserted directly. It includes a check that no module reachable from the CLI calls a process function it never imported — the specific mistake behind the skillshare crash.
+- Hostile-input coverage: deeply nested expressions, oversized files, unterminated templates, binary files, symlinks that escape the project or loop, and shell-metacharacter filenames.
+- The suite goes from 405 tests to 467.
+
 ## [0.9.1] - 2026-09-06
 
 Fixes from an adversarial audit that ran the tool against realistic backend fixtures written independently of the analyzers. Three of these were release blockers; all of them were invisible to the repository's own release rubric, which scored 100/100 while they were present.
