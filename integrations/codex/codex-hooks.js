@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { readJsonConfig } from "../../runtime/fs-utils.js";
+import { assertMergeableConfig, readJsonConfig, writeJsonConfig } from "../../runtime/fs-utils.js";
 
 // Entries this installer previously wrote are recognised so a re-install
 // replaces them instead of appending a duplicate. The pre-0.9.0 path
@@ -30,7 +30,7 @@ function readHooksFile(hooksPath) {
   // A hooks file that does not parse is left alone rather than replaced with
   // defaults: it is the user's, and it may hold hooks BackendGuard did not add.
   const parsed = readJsonConfig(hooksPath, { hooks: {} });
-  if (!parsed.hooks || typeof parsed.hooks !== "object") parsed.hooks = {};
+  parsed.hooks = assertMergeableConfig(parsed.hooks, { path: hooksPath, key: "hooks" });
   return parsed;
 }
 
@@ -98,9 +98,11 @@ function codexHookEntry({ marketplaceRoot, scriptName, matcher, timeout, statusM
   return entry;
 }
 
-export function buildGlobalHooksConfig(existingConfig, { marketplaceRoot, injectPromptContext = true }) {
-  const config = existingConfig && typeof existingConfig === "object" ? structuredClone(existingConfig) : {};
-  if (!config.hooks || typeof config.hooks !== "object") config.hooks = {};
+export function buildGlobalHooksConfig(existingConfig, { marketplaceRoot, injectPromptContext = true, configPath } = {}) {
+  // An array passes `typeof === "object"`; properties added to it are dropped
+  // by JSON.stringify, which would write a settings file with no hooks in it.
+  const config = structuredClone(assertMergeableConfig(existingConfig, { path: configPath }));
+  config.hooks = assertMergeableConfig(config.hooks, { path: configPath, key: "hooks" });
 
   const additions = {
     SessionStart: codexHookEntry({
@@ -138,8 +140,7 @@ export function buildGlobalHooksConfig(existingConfig, { marketplaceRoot, inject
 export function installGlobalHooks({ codexHome, marketplaceRoot, injectPromptContext = true }) {
   const hooksPath = path.join(codexHome, "hooks.json");
   const existing = readHooksFile(hooksPath);
-  const next = buildGlobalHooksConfig(existing, { marketplaceRoot, injectPromptContext });
-  fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
-  fs.writeFileSync(hooksPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  const next = buildGlobalHooksConfig(existing, { marketplaceRoot, injectPromptContext, configPath: hooksPath });
+  writeJsonConfig(hooksPath, next);
   return hooksPath;
 }

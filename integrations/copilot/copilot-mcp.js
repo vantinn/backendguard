@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 
-import { readJsonConfig } from "../../runtime/fs-utils.js";
+import { assertMergeableConfig, readJsonConfig, writeJsonConfig } from "../../runtime/fs-utils.js";
 
 /**
  * Copilot MCP configuration lives at .vscode/mcp.json (workspace-level).
@@ -20,9 +20,12 @@ export function copilotMcpConfigPath(cwd = process.cwd()) {
   return path.join(cwd, ".vscode", "mcp.json");
 }
 
-export function buildCopilotMcpConfig(existingConfig, { installRoot } = {}) {
-  const config = existingConfig && typeof existingConfig === "object" ? structuredClone(existingConfig) : {};
-  if (!config.mcpServers || typeof config.mcpServers !== "object") config.mcpServers = {};
+export function buildCopilotMcpConfig(existingConfig, { installRoot, configPath } = {}) {
+  // `typeof [] === "object"`, so an array used to pass this check — and a
+  // property added to an array is dropped by JSON.stringify, producing an
+  // install that reported success and registered no MCP server.
+  const config = structuredClone(assertMergeableConfig(existingConfig, { path: configPath }));
+  config.mcpServers = assertMergeableConfig(config.mcpServers, { path: configPath, key: "mcpServers" });
   config.mcpServers["backendguard-mcp"] = {
     type: "stdio",
     command: "node",
@@ -34,8 +37,7 @@ export function buildCopilotMcpConfig(existingConfig, { installRoot } = {}) {
 export function installCopilotMcp({ cwd = process.cwd(), configPath, installRoot } = {}) {
   const mcpPath = configPath || copilotMcpConfigPath(cwd);
   const existing = readJsonFile(mcpPath, {});
-  const next = buildCopilotMcpConfig(existing, { installRoot });
-  fs.mkdirSync(path.dirname(mcpPath), { recursive: true });
-  fs.writeFileSync(mcpPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  const next = buildCopilotMcpConfig(existing, { installRoot, configPath: mcpPath });
+  writeJsonConfig(mcpPath, next);
   return mcpPath;
 }

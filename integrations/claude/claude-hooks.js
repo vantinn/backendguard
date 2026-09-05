@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { readJsonConfig } from "../../runtime/fs-utils.js";
+import { readJsonConfig, writeJsonConfig } from "../../runtime/fs-utils.js";
 
 import { buildGlobalHooksConfig } from "../codex/codex-hooks.js";
 
@@ -23,9 +23,9 @@ export function installClaudeHooks({ claudeHome: home = claudeHome(), installRoo
   const existing = readJsonFile(settingsPath, {});
   const next = buildGlobalHooksConfig(existing, {
     marketplaceRoot: installRoot,
-    injectPromptContext
+    injectPromptContext,
+    configPath: settingsPath
   });
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  writeJsonConfig(settingsPath, next);
   return settingsPath;
 }

@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { readJsonConfig } from "../../runtime/fs-utils.js";
+import { assertMergeableConfig, readJsonConfig, writeJsonConfig } from "../../runtime/fs-utils.js";
 
 /**
  * Delegates to the shared reader, which refuses to overwrite a config it
@@ -16,9 +16,12 @@ export function claudeConfigPath() {
   return process.env.CLAUDE_CONFIG_PATH || path.join(os.homedir(), ".claude.json");
 }
 
-export function buildClaudeMcpConfig(existingConfig, { installRoot } = {}) {
-  const config = existingConfig && typeof existingConfig === "object" ? structuredClone(existingConfig) : {};
-  if (!config.mcpServers || typeof config.mcpServers !== "object") config.mcpServers = {};
+export function buildClaudeMcpConfig(existingConfig, { installRoot, configPath } = {}) {
+  // `typeof [] === "object"`, so an array used to pass this check — and a
+  // property added to an array is dropped by JSON.stringify, producing an
+  // install that reported success and registered no MCP server.
+  const config = structuredClone(assertMergeableConfig(existingConfig, { path: configPath }));
+  config.mcpServers = assertMergeableConfig(config.mcpServers, { path: configPath, key: "mcpServers" });
   config.mcpServers["backendguard-mcp"] = {
     type: "stdio",
     command: "node",
@@ -30,8 +33,7 @@ export function buildClaudeMcpConfig(existingConfig, { installRoot } = {}) {
 
 export function installClaudeMcp({ configPath = claudeConfigPath(), installRoot } = {}) {
   const existing = readJsonFile(configPath, {});
-  const next = buildClaudeMcpConfig(existing, { installRoot });
-  fs.mkdirSync(path.dirname(configPath), { recursive: true });
-  fs.writeFileSync(configPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  const next = buildClaudeMcpConfig(existing, { installRoot, configPath });
+  writeJsonConfig(configPath, next);
   return configPath;
 }

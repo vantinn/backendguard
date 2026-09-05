@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
-import { readJsonConfig } from "../../runtime/fs-utils.js";
+import { assertMergeableConfig, readJsonConfig, writeJsonConfig } from "../../runtime/fs-utils.js";
 
 function shellQuote(value) {
   const s = String(value);
@@ -30,8 +30,10 @@ export function antigravityHooksPath() {
     || path.join(os.homedir(), ".gemini", "config", "hooks.json");
 }
 
-export function buildAntigravityHooksConfig(existingConfig, { installRoot, injectPromptContext = true } = {}) {
-  const config = existingConfig && typeof existingConfig === "object" ? structuredClone(existingConfig) : {};
+export function buildAntigravityHooksConfig(existingConfig, { installRoot, injectPromptContext = true, configPath } = {}) {
+  // An array passes `typeof === "object"`; properties added to it are dropped
+  // by JSON.stringify, which would write a hooks file with no hooks in it.
+  const config = structuredClone(assertMergeableConfig(existingConfig, { path: configPath }));
   config.backendguard = {
     enabled: true,
     PreInvocation: [
@@ -54,8 +56,7 @@ export function buildAntigravityHooksConfig(existingConfig, { installRoot, injec
 
 export function installAntigravityHooks({ hooksPath = antigravityHooksPath(), installRoot, injectPromptContext = true } = {}) {
   const existing = readJsonFile(hooksPath, {});
-  const next = buildAntigravityHooksConfig(existing, { installRoot, injectPromptContext });
-  fs.mkdirSync(path.dirname(hooksPath), { recursive: true });
-  fs.writeFileSync(hooksPath, `${JSON.stringify(next, null, 2)}\n`, "utf8");
+  const next = buildAntigravityHooksConfig(existing, { installRoot, injectPromptContext, configPath: hooksPath });
+  writeJsonConfig(hooksPath, next);
   return hooksPath;
 }
