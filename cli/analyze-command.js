@@ -83,6 +83,26 @@ export function formatAnalyzerList(analyzers) {
   return lines.join("\n");
 }
 
+/**
+ * One line per reason, listing a few files each — a project with hundreds of
+ * oversized generated files should warn, not fill the terminal.
+ */
+export function formatSkippedFiles(skippedFiles = [], { sample = 3 } = {}) {
+  if (!skippedFiles.length) return [];
+  const byReason = new Map();
+  for (const entry of skippedFiles) {
+    if (!byReason.has(entry.reason)) byReason.set(entry.reason, []);
+    byReason.get(entry.reason).push(entry.relativePath);
+  }
+  const lines = [];
+  for (const [reason, files] of byReason) {
+    const shown = files.slice(0, sample).join(", ");
+    const rest = files.length > sample ? `, and ${files.length - sample} more` : "";
+    lines.push(`Not analyzed: ${files.length} file(s) ${reason} — ${shown}${rest}`);
+  }
+  return lines;
+}
+
 export function formatAnalysis(result, options = {}) {
   const lines = ["BackendGuard analysis", ""];
   const stack = [result.stack.framework, result.stack.language, result.stack.database, result.stack.orm]
@@ -92,6 +112,9 @@ export function formatAnalysis(result, options = {}) {
   lines.push(`Files   : ${result.filesAnalyzed}${result.truncated ? " (scan limit reached — results are partial)" : ""}`);
   lines.push(`Analyzers: ${result.ran.join(", ") || "none"}`);
   if (result.skipped.length) lines.push(`Skipped : ${result.skipped.join(", ")} (technology not detected)`);
+  // A file that could not be read or parsed is not analyzed, so saying nothing
+  // about it would report a partial run as a complete one.
+  for (const line of formatSkippedFiles(result.skippedFiles)) lines.push(line);
   lines.push("");
 
   if (!result.findings.length) {

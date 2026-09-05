@@ -31,7 +31,7 @@ export function createAnalyzerRegistry(analyzers = defaultAnalyzers) {
 
 /**
  * @param {{cwd: string, files?: string[], stack?: object, analyzers?: Array}} options
- * @returns {{findings, stack, ran, errors, skipped, filesAnalyzed, truncated}}
+ * @returns {{findings, stack, ran, errors, skipped, skippedFiles, filesAnalyzed, truncated}}
  */
 export function analyzeProject({ cwd, files, stack, analyzers = defaultAnalyzers, limits } = {}) {
   const resolvedStack = stack || detectStack({ cwd });
@@ -48,7 +48,12 @@ export function analyzeProject({ cwd, files, stack, analyzers = defaultAnalyzers
     skipped,
     errors,
     filesAnalyzed: index.files.length,
-    truncated: index.truncated
+    truncated: index.truncated,
+    // Surfaced so a partial analysis is never reported as a clean one.
+    skippedFiles: [
+      ...(index.skippedForSize || []).map((relativePath) => ({ relativePath, reason: "larger than the size limit" })),
+      ...(index.unparsed || [])
+    ]
   };
 }
 

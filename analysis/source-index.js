@@ -51,19 +51,43 @@ export function buildSourceIndex({ cwd, files, limits } = {}) {
     : collectTypeScriptFiles(cwd, { limits });
 
   const parsed = [];
+  const unparsed = [];
   for (const relativePath of scan.files) {
-    const text = readSource(cwd, relativePath, limits);
+    let text;
+    try {
+      text = readSource(cwd, relativePath, limits);
+    } catch (error) {
+      // Unreadable file (permissions, a broken symlink, a race with a build).
+      unparsed.push({ relativePath, reason: error.code === "EACCES" ? "unreadable" : "read failed" });
+      continue;
+    }
     if (text === null) continue;
-    parsed.push({
-      relativePath,
-      text,
-      sourceFile: ts.createSourceFile(relativePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)
-    });
+
+    // One file must not be able to end the run. The TypeScript parser is
+    // recursive, so an expression nested a few thousand levels deep — which a
+    // hostile or generated file can contain — overflows the stack, and that
+    // `RangeError` used to propagate out of the whole analysis: a single file
+    // made `backendguard analyze` fail with "This is a bug in BackendGuard".
+    let sourceFile;
+    try {
+      sourceFile = ts.createSourceFile(relativePath, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+    } catch (error) {
+      unparsed.push({
+        relativePath,
+        reason: error instanceof RangeError ? "too deeply nested to parse" : "could not be parsed"
+      });
+      continue;
+    }
+    parsed.push({ relativePath, text, sourceFile });
   }
 
   const index = {
     cwd,
     truncated: scan.truncated,
+    /** Files the scanner refused to read because of their size. */
+    skippedForSize: scan.skippedForSize || [],
+    /** Files that were read but could not be parsed, with the reason. */
+    unparsed,
     files: parsed,
     entities: new Map(),          // className -> { sensitiveColumns, allColumns, relativePath, node }
     controllers: new Map(),       // className -> { node, relativePath }
