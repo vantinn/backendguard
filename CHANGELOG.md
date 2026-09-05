@@ -28,6 +28,26 @@ Post-release fixes for problems users hit while installing 0.9.1 into real backe
 - The two branches of the multi-select prompt disagreed on what an option with no explicit `selected` meant; both now read it the same way.
 - The agent leaderboard's binary lookup contained a hardcoded Windows path with one developer's username. It is derived from the environment instead.
 
+### Fixed — found by a second, independent adversarial audit
+
+The audit below was run against the *packed npm artifact* installed into clean environments, not against the repository, and its security fixtures were written from a vulnerability checklist rather than from the analyzers.
+
+- **A `~/.claude.json` that was a JSON array made `install` report success while registering nothing.** `typeof [] === "object"`, so an array passed every shape check, and a named property added to an array is silently dropped by `JSON.stringify`. The install printed its success banner having written no MCP server at all — and, for `["a","b"]`, having rewritten the user's file. The same flaw was present in all six config builders (Claude MCP and hooks, Codex hooks, Antigravity MCP and hooks, Copilot MCP). A config that cannot be merged into is now refused with exit code 2 and left byte-for-byte untouched.
+- **A read-only or root-owned config crashed with exit code 70 and "This is a bug in BackendGuard".** Config writes are now atomic — written to a sibling temp file and renamed — and every failure mode (`EACCES`, `EPERM`, `EROFS`, `ENOSPC`, `EISDIR`, `ELOOP`) is classified as a configuration or environment problem. A config path that is a directory, or a symlink loop, is likewise no longer reported as an internal fault.
+- **An interrupted install could leave a truncated config.** A direct write truncates before it writes; the atomic replace means an interrupted run leaves the previous file intact. Verified across 21 kill scenarios (SIGINT/SIGTERM/SIGKILL at seven points in the install): no corruption, no user data lost, and re-running always recovered.
+- **A symlinked config file was replaced by a regular file.** Dotfiles repositories symlink `~/.claude.json`; the writer now resolves the link and replaces its target, so the symlink survives.
+- **The prompt hook took ~32s on a 200KB prompt and over 200s on a 500KB one, freezing the agent on every message.** `findExplicitPromptFiles` matched path-like tokens with `X+(?:/X+)+`; on a long run of those characters with no `/` — a base64 blob, a minified line, a pasted stack trace — the engine backtracks over every split point, which is quadratic. The 8.5s hook deadline could not help, because a `setTimeout` cannot fire while synchronous work holds the event loop. Matching is now done per whitespace-delimited token (exact, since the character class excludes whitespace) and skips tokens with no `/` or longer than a path. A 2MB single-token prompt now costs the same as an empty one.
+- **`SEC-003` missed a committed credential unless it sat under one of twelve property names.** `KNOWN_CREDENTIAL_FORMATS` is documented as matching formats that are "unambiguously credentials, whatever they are assigned to", but it was only consulted for object property assignments whose key already matched. `export const STRIPE_KEY = "sk_live_..."` — the shape a real leak takes — was reported as no finding at all. Any string literal in a recognised issuer format (Stripe, GitHub, GitLab, Slack, AWS, Google, npm, SendGrid, PEM, JWT) is now reported wherever it appears; a connection URI pointing at `localhost` or a compose service name is excluded, because that is a development default rather than a leak.
+- **`TORM-008` reported the recommended fix for dynamic sorting as a CRITICAL injection.** A dynamic `ORDER BY` cannot be bound as a parameter, so the documented remedy is to interpolate a value from a constant allow-list — and that pattern was flagged at CRITICAL/high, teaching users to ignore the tool's most severe finding. An interpolation is now a finding only when something in it is not provably a compile-time constant; `let` bindings, maps holding non-literal values, function calls and parameters are all still reported.
+- **The skill-library fetcher followed redirects without a limit, accepted any scheme, and read responses without a size cap.** A server answering 302 with its own URL recursed until the stack ran out. Redirects are now bounded to five, restricted to https, and bodies are capped.
+
+### Testing — independent validation
+
+- Added `tests/config-safety.test.js`, `tests/prompt-hook-redos.test.js`, `tests/secret-literal-scope.test.js`, `tests/sql-interpolation-allowlist.test.js`, `tests/documentation-contract.test.js` and `tests/windows-behaviour.test.js`. Each of the bugs above has a test that failed before its fix.
+- The documentation-contract test extracts every `backendguard ...` invocation from the README and checks it against the CLI's declared surface, so documentation and implementation cannot drift apart silently. It caught a stale marker in this release's own README edit.
+- Beyond the suite, run against the installed artifact: 800 randomized CLI invocations, 140 shell-metacharacter and Unicode agent-name payloads, 90 malformed hook payloads, 14 configuration shapes, 21 process-kill/recovery scenarios, and 500 randomly malformed TypeScript sources. No shell injection, no hang, no out-of-scope write, no internal-bug misclassification.
+- The suite goes from 405 tests to 578.
+
 ### Changed
 
 - Agent names, aliases and the supported-agent list live in one module, `runtime/agents.js`, instead of being written down separately in the install command, the setup wizard and two normalizer functions that disagreed.
@@ -43,7 +63,6 @@ Post-release fixes for problems users hit while installing 0.9.1 into real backe
 
 - `tests/post-release-0.9.2-regressions.test.js` adds 60 tests covering each bug above, driving the CLI as a process so the exit code and the absence of "This is a bug in BackendGuard" are asserted directly. It includes a check that no module reachable from the CLI calls a process function it never imported — the specific mistake behind the skillshare crash.
 - Hostile-input coverage: deeply nested expressions, oversized files, unterminated templates, binary files, symlinks that escape the project or loop, and shell-metacharacter filenames.
-- The suite goes from 405 tests to 467.
 
 ## [0.9.1] - 2026-09-06
 
