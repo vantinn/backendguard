@@ -446,13 +446,17 @@ Without a global install:
 npx @vantin/backendguard@latest install
 ```
 
-Agent-specific installers (`backendguard install` defaults to `backendguard install codex`):
+Agent-specific installers. The agent may be given as a positional argument or through `--agent`/`--agents`:
 
 ```bash
 backendguard install codex
 backendguard install claude
 backendguard install agy
+backendguard install --agent claude
+backendguard install --agents codex,claude
 ```
+
+Run without an agent name, `backendguard install` opens a multi-select prompt: Space toggles an agent, Enter confirms. Agents already present on the machine are preselected; if none are found, Codex is. Selecting nothing is a usage error (exit code 2), not a silent no-op, and an unknown agent name is rejected before anything is written.
 
 ### Codex
 
@@ -511,13 +515,13 @@ It reads project workflows first (`.claude/workflows/`, `.codex/workflows/`, `.g
 
 ## Modes
 
-Injection mode is the default (`backendguard install`): BackendGuard analyzes each prompt, stores runtime data, and returns task-relevant `additionalContext`.
+Prompt injection is always on: BackendGuard analyzes each prompt, stores runtime data, and returns task-relevant `additionalContext`. There is no flag to turn it off — the earlier `--quiet` and `--inject` flags were never implemented and are gone from the documentation.
 
 ```bash
-backendguard install --quiet    # analyzes and measures, but returns no additionalContext
-backendguard install --inject   # explicit injection mode
 backendguard install --copy     # copies only the plugin payload into $CODEX_HOME/marketplaces/backendguard (local experiments)
 ```
+
+Use `backendguard config` to choose which context sections the prompt hook injects, and how many items each may contribute.
 
 ## Ruler Sync
 
