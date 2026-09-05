@@ -329,11 +329,12 @@ function checkDataSourceConfiguration({ sourceFile, relativePath }) {
 
 function checkRawQueryInterpolation({ sourceFile, relativePath }) {
   const findings = [];
+  const constants = collectConstantStringSources(sourceFile);
   const visit = (node) => {
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)
       && ["query", "where", "andWhere", "orWhere", "having"].includes(node.expression.name.text)) {
       const [first] = node.arguments;
-      if (first && isInterpolatedSql(first)) {
+      if (first && isInterpolatedSql(first, constants)) {
         findings.push(createFinding({
           id: "TORM-008",
           category: "Security",
@@ -355,10 +356,71 @@ function checkRawQueryInterpolation({ sourceFile, relativePath }) {
   return findings;
 }
 
-function isInterpolatedSql(node) {
-  if (ts.isTemplateExpression(node)) return node.templateSpans.length > 0;
+function isInterpolatedSql(node, constants = new Set()) {
+  if (ts.isTemplateExpression(node)) {
+    if (!node.templateSpans.length) return false;
+    // A dynamic ORDER BY cannot be bound as a parameter, so the documented
+    // remedy is to interpolate a value looked up from a constant allow-list.
+    // Reporting that as a CRITICAL injection flags the fix as the bug, so an
+    // interpolation is a finding only when something in it is not provably a
+    // compile-time constant.
+    return node.templateSpans.some((span) => !isCompileTimeConstant(span.expression, constants));
+  }
   if (ts.isBinaryExpression(node) && node.operatorToken.kind === ts.SyntaxKind.PlusToken) {
     return ts.isStringLiteralLike(node.left) || ts.isStringLiteralLike(node.right);
+  }
+  return false;
+}
+
+/**
+ * Module-level `const` bindings whose value can only ever be a string literal:
+ * a literal itself, or an object literal whose every property is one. These
+ * are the only names an interpolation may safely carry.
+ *
+ * `let`/`var` are excluded, and so is an object with any non-literal value —
+ * `{ name: process.env.COL }` is not an allow-list.
+ */
+function collectConstantStringSources(sourceFile) {
+  const names = new Set();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    const isConst = (statement.declarationList.flags & ts.NodeFlags.Const) !== 0;
+    if (!isConst) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (!ts.isIdentifier(declaration.name) || !declaration.initializer) continue;
+      if (isConstantStringInitializer(declaration.initializer)) names.add(declaration.name.text);
+    }
+  }
+  return names;
+}
+
+function isConstantStringInitializer(node) {
+  const initializer = ts.isAsExpression(node) ? node.expression : node;
+  if (ts.isStringLiteralLike(initializer) && !ts.isTemplateExpression(initializer)) return true;
+  if (ts.isObjectLiteralExpression(initializer)) {
+    return initializer.properties.length > 0 && initializer.properties.every((property) =>
+      ts.isPropertyAssignment(property)
+      && ts.isStringLiteralLike(property.initializer)
+      && !ts.isTemplateExpression(property.initializer));
+  }
+  return false;
+}
+
+/**
+ * True when an interpolated expression can only produce one of a fixed set of
+ * string literals: a literal, a constant name, or an access into a constant
+ * map. Anything else — a parameter, a call, a property of something unknown —
+ * is treated as attacker-controlled.
+ */
+function isCompileTimeConstant(expression, constants) {
+  if (ts.isStringLiteralLike(expression) && !ts.isTemplateExpression(expression)) return true;
+  if (ts.isIdentifier(expression)) return constants.has(expression.text);
+  if (ts.isPropertyAccessExpression(expression) || ts.isElementAccessExpression(expression)) {
+    // The *root* of the access must be a constant map; the key may be dynamic,
+    // because every value in that map is a literal the author chose.
+    let root = expression;
+    while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root)) root = root.expression;
+    return ts.isIdentifier(root) && constants.has(root.text);
   }
   return false;
 }
