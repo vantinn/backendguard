@@ -1,0 +1,25 @@
+{
+  "name": "idiomatic-naming",
+  "description": "Written during the adversarial audit from ordinary backend code, not from reading the analyzers. Every defect here was MISSED before 0.9.1: repository/client fields named after the domain rather than *Repo/prisma, multi-line SQL migrations, concatenated SQL, and a route whose public path is declared on the @Controller. The controls are the shapes that produced high-confidence false positives: a config map of environment-variable names, a header name, and a signature-verified webhook.",
+  "stack": {
+    "framework": "NestJS",
+    "language": "TypeScript",
+    "database": "PostgreSQL",
+    "orm": "TypeORM"
+  },
+  "expected": [
+    { "id": "TORM-001", "file": "src/catalog/catalog.service.ts", "why": "this.products.find() — repository field not named *Repo" },
+    { "id": "TORM-002", "file": "src/catalog/catalog.service.ts", "why": "findOne inside a for-of, same non-standard naming" },
+    { "id": "SEC-003", "file": "src/orders/leak.ts", "why": "a real Stripe live key" },
+    { "id": "TORM-008", "file": "src/orders/reports.ts", "why": "SQL assembled by string concatenation" },
+    { "id": "PG-001", "file": "migrations/010_add_region.sql", "why": "multi-line ADD COLUMN NOT NULL with no default" },
+    { "id": "PG-003", "file": "migrations/010_add_region.sql", "why": "multi-line UPDATE with no WHERE" }
+  ],
+  "controls": [
+    { "file": "src/catalog/product.entity.ts", "why": "indexed, unique columns" },
+    { "file": "src/orders/config.ts", "why": "config map of environment-variable names, a header name and a dotted config key — none are credentials" },
+    { "file": "src/orders/webhooks.controller.ts", "why": "public by necessity; the public segment is on the @Controller path" },
+    { "file": "src/orders/pool.ts", "why": "pool sized with an idle timeout" }
+  ],
+  "tolerated": []
+}

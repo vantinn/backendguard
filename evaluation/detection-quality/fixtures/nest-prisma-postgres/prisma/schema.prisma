@@ -1,0 +1,45 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id       String  @id @default(uuid())
+  // INSECURE: identity field with no unique constraint.
+  email    String
+  name     String?
+  orders   Order[]
+}
+
+model Order {
+  id        String   @id @default(uuid())
+  // INSECURE: relation scalar with no index.
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  // INSECURE: money as a Float.
+  total     Float
+  status    String
+  createdAt DateTime @default(now())
+  items     OrderItem[]
+}
+
+model OrderItem {
+  id       String @id @default(uuid())
+  // SECURE control: relation scalar that is explicitly indexed below.
+  orderId  String
+  order    Order  @relation(fields: [orderId], references: [id])
+  quantity Int
+
+  @@index([orderId])
+}
+
+model Product {
+  id   String @id @default(uuid())
+  // SECURE control: unique lookup key.
+  sku  String @unique
+  name String
+}

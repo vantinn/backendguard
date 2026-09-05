@@ -1,0 +1,79 @@
+{
+  "name": "secure-baseline",
+  "description": "A correct NestJS + TypeORM + PostgreSQL service written the way the rule packs recommend. It deliberately uses the words password, passwordHash, secret, token, refreshToken and query throughout, in correct code. Every file is a control: any finding here is a false positive.",
+  "stack": {
+    "framework": "NestJS",
+    "language": "TypeScript",
+    "database": "PostgreSQL",
+    "orm": "TypeORM",
+    "containerization": "Docker"
+  },
+  "expected": [],
+  "controls": [
+    {
+      "file": "migrations/1700000002000-CreateAccount.sql",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/accounts/account.entity.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/accounts/accounts.controller.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/accounts/accounts.service.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/accounts/dto/account-response.dto.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/accounts/dto/create-account.dto.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/app.module.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/auth/auth.controller.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/auth/auth.service.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/auth/dto/login.dto.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/auth/dto/token-response.dto.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/common/health.controller.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/common/jwt-auth.guard.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/data-source.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/files/files.controller.ts",
+      "why": "correct implementation"
+    },
+    {
+      "file": "src/main.ts",
+      "why": "correct implementation"
+    }
+  ],
+  "tolerated": []
+}

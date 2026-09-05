@@ -13,9 +13,9 @@ Both feed into the same retrieval pipeline, but they're authored and versioned d
 
 ## AGENTS.md rule parsing & ranking
 
-File: `plugins/ctx/lib/analyzer.js`
+File: `rules/rule-engine.js`
 
-- `parseRules(markdown)` turns raw `AGENTS.md`-style content into flat rule objects: `{ id, sourcePath, content, originalOrder }`. A rule is one bullet/numbered-list line or paragraph of at least ~20 characters; `## Source:` markers track which file it came from when multiple `AGENTS.md` files are chained together (`reader.js` — `readAgentsChain()`).
+- `parseRules(markdown)` turns raw `AGENTS.md`-style content into flat rule objects: `{ id, sourcePath, content, originalOrder }`. A rule is one bullet/numbered-list line or paragraph of at least ~20 characters; `## Source:` markers track which file it came from when multiple `AGENTS.md` files are chained together (`rules/agents-file-reader.js` — `readAgentsChain()`).
 - `scoreRules(rules, task, openFiles)` ranks rules by token overlap between the task text and rule text (`tokenize()`), a semantic-alias table for near-synonyms, and an "imperative" bonus for words like *always/never/must*. This is intentionally lexical, not ML — the embedding layer (below) is a separate, optional scoring signal.
 - `findProjectManifestFiles`, `findExplicitPromptFiles`, `findPromptContextFiles` do the equivalent ranking for candidate files, including NestJS-shaped module-neighbor boosting (`src/modules/<name>/*.controller.ts` etc.) and Prisma schema hinting.
 - `isSystemUserRule()` / `isDocumentationOnlyRule()` filter out rules that describe the *agent's runtime environment* (e.g. "run shell commands as user X") rather than the project — these never get injected or scored for compliance.
@@ -24,7 +24,7 @@ There is no severity/category metadata on AGENTS.md rules themselves — see [co
 
 ## Rule packs ("skills")
 
-Files: `community-skills/<pack>/SKILL.md` + `skill.yaml`, parsed by `plugins/ctx/lib/skill-discoverer.js`.
+Files: `skills/<pack>/SKILL.md` + `skill.yaml`, parsed by `agent-context/skill-discoverer.js`.
 
 A rule pack is a directory with:
 
@@ -44,16 +44,16 @@ Routing (`hybridSkillScore()`) blends multiple signals — see the formula in th
 
 ### Adding a rule pack
 
-1. Copy `community-skills/_template/` to `community-skills/<your-pack-id>/`.
+1. Copy `skills/_template/` to `skills/<your-pack-id>/`.
 2. Fill in `skill.yaml`: `positive_triggers` (what prompts/files/deps should surface this pack), `evidence` (what actually proves the repo uses this technology — keep this narrower/stricter than `positive_triggers`), `negative_triggers` (what should suppress it, e.g. a competing ORM), `workflow` (3-5 concrete steps).
 3. Write `SKILL.md` — frontmatter `name`/`description` plus the workflow explained in prose for the agent to read directly.
 4. Cross-link `related_skills` to existing packs where relevant (see how `security`, `nestjs`, `postgresql`, `typeorm` reference each other).
-5. If this is a first-party pack (not a community contribution), add its id to `expectedSeeds` in `test/community-skills.test.js`.
-6. Run `backendguard rules doctor -- "<a task that should route to your pack>"` to verify routing, and `npm run benchmark:skills` (`backendguard benchmark --skills`) to check it doesn't regress the routing eval in `eval/skill-routing/cases.yaml`.
+5. If this is a first-party pack (not a community contribution), add its id to `expectedSeeds` in `tests/skills.test.js`.
+6. Run `backendguard rules doctor -- "<a task that should route to your pack>"` to verify routing, and `npm run benchmark:skills` (`backendguard benchmark --skills`) to check it doesn't regress the routing eval in `evaluation/skill-routing/cases.yaml`.
 
 ### Adding stack detection for a new framework/ORM/database
 
-Rule packs only activate on evidence — that evidence comes from `detectProjectProfile()` in `plugins/ctx/lib/project-context-generator.js`. To support a new technology end-to-end:
+Rule packs only activate on evidence — that evidence comes from `detectProjectProfile()` in `analysis/stack-detector.js`. To support a new technology end-to-end:
 
 1. Add a dependency/file check to `detectProjectProfile()` (follow the existing `pg`/`typeorm`/`prisma` checks) and push a new tag onto `platforms`.
 2. If it should show up in `backendguard stack`, add a field to `buildStackReport()` and a row in `formatStackReport()`.
@@ -61,9 +61,9 @@ Rule packs only activate on evidence — that evidence comes from `detectProject
 
 ## Context retrieval orchestration
 
-File: `plugins/ctx/lib/score-context.js` — `scoreContext()` is the single entrypoint both the CLI (`backendguard context`/`debug`) and the MCP tool `ctx_score_context` call. It runs rule scoring, file retrieval, rule-pack retrieval, and workflow retrieval, optionally boosted by:
+File: `retrieval/context-retriever.js` — `scoreContext()` is the single entrypoint both the CLI (`backendguard context`/`debug`) and the MCP tool `backendguard_score_context` call. It runs rule scoring, file retrieval, rule-pack retrieval, and workflow retrieval, optionally boosted by:
 
-- `plugins/ctx/lib/embedding-scorer.js` / `file-embedding-retriever.js` — local MiniLM embeddings for semantic similarity (bridges vocabulary mismatch, e.g. non-English prompts vs. English rule text). Runs inside the hot `ctx-mcp` process; hooks never cold-load the model (see [integrations.md](integrations.md)).
-- `plugins/ctx/lib/graph-retriever.js` / `graph-strategy.js` — optional `code-review-graph`/`codegraph` adapters for blast-radius and symbol search. Contribute score `0` when unavailable; never required.
+- `embedding-scorer.js` / `file-embedding-retriever.js` — local MiniLM embeddings for semantic similarity (bridges vocabulary mismatch, e.g. non-English prompts vs. English rule text). Runs inside the hot `backendguard-mcp` process; hooks never cold-load the model (see [integrations.md](integrations.md)).
+- `graph-retriever.js` / `graph-strategy.js` — optional `code-review-graph`/`codegraph` adapters for blast-radius and symbol search. Contribute score `0` when unavailable; never required.
 
-`plugins/ctx/lib/scheduler.js` — `scheduleContext()` takes the scored candidates and lays out the final injected text: which rules are "critical" vs. additional, adaptive budgets for files/skills/workflows (task-complexity-aware, not a fixed count), and the exact markdown the agent sees.
+`rules/context-scheduler.js` — `scheduleContext()` takes the scored candidates and lays out the final injected text: which rules are "critical" vs. additional, adaptive budgets for files/skills/workflows (task-complexity-aware, not a fixed count), and the exact markdown the agent sees.

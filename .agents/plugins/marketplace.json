@@ -5,10 +5,10 @@
   },
   "plugins": [
     {
-      "name": "ctx",
+      "name": "backendguard",
       "source": {
         "source": "local",
-        "path": "./plugins/ctx"
+        "path": "./plugins/backendguard"
       },
       "policy": {
         "installation": "AVAILABLE",

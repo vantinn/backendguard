@@ -1,0 +1,24 @@
+id: typeorm
+name: TypeORM
+description: Debug TypeORM entities, relations, repositories, QueryBuilder, transactions, and migrations.
+positive_triggers:
+  prompts: [typeorm, entity, repository, querybuilder, relation, eager loading, lazy loading, migration, transaction, data source, "n+1", pagination, take, skip, index, synchronize]
+  files: ["*.entity.ts", ormconfig.json, ormconfig.js, src/data-source.ts, "src/migrations/*"]
+  dependencies: [typeorm, "@nestjs/typeorm"]
+evidence:
+  files: ["*.entity.ts", src/data-source.ts, "src/migrations/*"]
+  dependencies: [typeorm, "@nestjs/typeorm"]
+negative_triggers:
+  prompts: [prisma schema, mongoose schema]
+  dependencies: [prisma, mongoose, sequelize]
+  files: [prisma/schema.prisma]
+workflow:
+  - Inspect entity definitions, relation decorators (@OneToMany, @ManyToOne, eager vs lazy), and repository/QueryBuilder usage in the changed service.
+  - Classify the issue as entity shape, relation loading, query performance, transaction boundary, or migration.
+  - Patch the smallest repository/service boundary; avoid marking relations `eager: true` unless they're needed on every load.
+  - Prefer QueryBuilder or `relations`/`select` options over loading full entity graphs when only a few fields are needed.
+  - Verify with a migration dry run (`migration:run`/`migration:revert` against a disposable database) and the relevant test or typecheck.
+related_skills:
+  - postgresql
+  - nestjs
+  - security

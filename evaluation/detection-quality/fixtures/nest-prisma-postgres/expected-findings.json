@@ -1,0 +1,25 @@
+{
+  "name": "nest-prisma-postgres",
+  "description": "NestJS + Prisma + PostgreSQL billing/orders service. Prisma findings must never be reported as TypeORM findings and vice versa.",
+  "stack": {
+    "framework": "NestJS",
+    "language": "TypeScript",
+    "database": "PostgreSQL",
+    "orm": "Prisma"
+  },
+  "expected": [
+    { "id": "PRISMA-001", "file": "prisma/schema.prisma", "why": "Order.userId relation scalar with no @@index" },
+    { "id": "PRISMA-002", "file": "prisma/schema.prisma", "why": "User.email with no @unique" },
+    { "id": "PRISMA-003", "file": "prisma/schema.prisma", "why": "Order.total stored as Float" },
+    { "id": "PRISMA-010", "file": "src/orders/orders.service.ts", "why": "findMany with no take/cursor" },
+    { "id": "PRISMA-011", "file": "src/orders/orders.service.ts", "why": "findUnique inside a for-of loop" },
+    { "id": "PRISMA-012", "file": "src/billing/billing.service.ts", "why": "three-level include with no select" },
+    { "id": "PRISMA-013", "file": "src/billing/billing.service.ts", "why": "$queryRawUnsafe with interpolated input" },
+    { "id": "PRISMA-014", "file": "src/orders/orders.service.ts", "why": "two Prisma writes with no $transaction" }
+  ],
+  "controls": [
+    { "file": "src/common/prisma.service.ts", "why": "plain PrismaService with a disconnect hook" }
+  ],
+  "forbiddenAnalyzers": ["typeorm"],
+  "tolerated": []
+}

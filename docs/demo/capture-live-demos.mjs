@@ -4,10 +4,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { benchmarkWorkspace, formatBenchmark } from "../../plugins/ctx/lib/benchmark.js";
-import { formatBackendGuardReady, inspectBackendGuardReady } from "../../plugins/ctx/lib/certification.js";
-import { formatHallucinationLeaderboard, runHallucinationLeaderboard } from "../../eval/hallucination/run-leaderboard.js";
-import { runSkillRoutingEval } from "../../eval/skill-routing/run-eval.js";
+import { benchmarkWorkspace, formatBenchmark } from "../../runtime/benchmark.js";
+import { formatBackendGuardReady, inspectBackendGuardReady } from "../../compliance/readiness-scorer.js";
+import { formatHallucinationLeaderboard, runHallucinationLeaderboard } from "../../evaluation/hallucination/run-leaderboard.js";
+import { runSkillRoutingEval } from "../../evaluation/skill-routing/run-eval.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(__dirname, "..", "..");

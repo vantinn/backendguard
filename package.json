@@ -1,38 +1,47 @@
 {
   "name": "@vantin/backendguard",
-  "version": "0.8.0",
+  "version": "0.9.1",
   "description": "AI backend engineering guardrails for NestJS, PostgreSQL, TypeORM, and Prisma — task-aware security/architecture/database context for AI coding agents, plus post-task compliance reporting.",
   "type": "module",
   "bin": {
-    "backendguard": "bin/ctx.js",
-    "backendguard-codex": "bin/ctx.js"
+    "backendguard": "cli/backendguard.js",
+    "backendguard-codex": "cli/backendguard.js"
   },
   "files": [
-    "bin/",
+    "cli/",
+    "rules/",
+    "retrieval/",
+    "analysis/",
+    "compliance/",
+    "agent-context/",
+    "integrations/",
+    "runtime/",
+    "evaluation/",
+    "!evaluation/**/fixtures/**",
+    "skills/",
+    "tooling/",
     "plugins/",
-    "scripts/",
+    ".agents/",
     ".codex/skills/",
     ".codex/workflows/",
-    ".agents/",
-    "README.md",
-    "DEMO.md",
-    "LAUNCH.md",
-    "community-skills/",
-    "eval/",
     "docs/",
+    "README.md",
     "LICENSE",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "SECURITY.md"
   ],
   "scripts": {
-    "test": "vitest run test",
-    "build": "node bin/ctx.js --version",
-    "validate:plugin": "node test/validate-plugin.js",
-    "benchmark:skills": "node bin/ctx.js benchmark --skills",
-    "leaderboard:hallucination": "node eval/hallucination/run-leaderboard.js",
-    "leaderboard:agents": "node eval/hallucination/run-agent-leaderboard.js --agents=codex,gemini",
+    "test": "vitest run",
+    "test:mcp": "node tests/mcp-protocol-smoke.js",
+    "test:package": "node tests/package-lifecycle.test.mjs",
+    "validate:plugin": "node tests/validate-plugin.js",
+    "evaluate": "node evaluation/release-readiness/run-evaluation.js",
+    "evaluate:detection": "node evaluation/detection-quality/run-detection-eval.js",
+    "benchmark:skills": "node cli/backendguard.js benchmark --skills",
+    "leaderboard:hallucination": "node evaluation/hallucination/run-leaderboard.js",
+    "leaderboard:agents": "node evaluation/hallucination/run-agent-leaderboard.js --agents=codex,gemini",
     "demo:capture": "node docs/demo/capture-live-demos.mjs",
-    "sync:community-skills": "node scripts/sync-community-skills.mjs",
-    "test:mcp": "node test/mcp-protocol-smoke.js"
+    "sync:skills": "node tooling/sync-skill-library.mjs"
   },
   "engines": {
     "node": ">=20"

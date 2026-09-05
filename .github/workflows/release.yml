@@ -33,13 +33,19 @@ jobs:
         run: npm test
 
       - name: Warm local embedding model
-        run: node bin/ctx.js embeddings warm -- "kiểm tra flow kiểm duyệt upload"
+        run: node cli/backendguard.js embeddings warm -- "review authentication and database access for this backend service"
 
       - name: MCP protocol and performance smoke
         run: npm run test:mcp
 
-      - name: Pack check
-        run: npm pack --dry-run
+      - name: Detection quality
+        run: npm run evaluate:detection
+
+      - name: Package lifecycle (pack, clean install, run)
+        run: npm run test:package
+
+      - name: Release readiness gates
+        run: npm run evaluate
 
       - name: Publish to npm
         run: npm publish --access public

@@ -118,12 +118,12 @@ Non-goals for the first version:
 
 ## P3: Community Skill Packs
 
-Do not build a full Hub first. Start with the local `community-skills/` folder that accepts PRs.
+Do not build a full Hub first. Start with the local `skills/` folder that accepts PRs.
 
 Initial packs:
 
 ```text
-community-skills/
+skills/
   security/
   nestjs/
   postgresql/
@@ -136,7 +136,7 @@ community-skills/
   vercel/
 ```
 
-The seed packs now live in [`community-skills/`](../community-skills/). Each pack contains:
+The seed packs now live in [`skills/`](../skills/). Each pack contains:
 
 ```text
 SKILL.md
@@ -279,7 +279,7 @@ Research shape:
 - Detect repeated project capabilities from dependencies, config files, route/controller names, tests, and recent git activity.
 - Generate `positive_triggers`, `evidence`, `negative_triggers`, and `workflow`.
 - Mark generated packs as drafts until reviewed.
-- Let an agent or maintainer publish a cleaned-up pack into `community-skills/`.
+- Let an agent or maintainer publish a cleaned-up pack into `skills/`.
 
 Guardrails:
 

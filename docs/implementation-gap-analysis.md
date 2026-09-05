@@ -4,7 +4,7 @@ Source: the pre-NPM validation run performed against this repository (score: **3
 
 ## How compliance/security findings are produced today
 
-`plugins/ctx/lib/measure.js` — `checkCompliance()` — is pure text: for each `AGENTS.md` rule it (1) tokenizes the rule sentence into "compliance keywords," (2) classifies the whole rule as `forbidden` if the sentence contains `never`/`no `/`khong` anywhere, else `required`, (3) greps the git diff's added lines for any of those keyword substrings, and (4) reports `followed`/`ignored` based on presence/absence. There is no parsing of the changed *code* at all — no AST, no type information, no understanding of what a controller returns or whether a DTO validates. This is the root cause of nearly every finding below.
+`measure.js` — `checkCompliance()` — is pure text: for each `AGENTS.md` rule it (1) tokenizes the rule sentence into "compliance keywords," (2) classifies the whole rule as `forbidden` if the sentence contains `never`/`no `/`khong` anywhere, else `required`, (3) greps the git diff's added lines for any of those keyword substrings, and (4) reports `followed`/`ignored` based on presence/absence. There is no parsing of the changed *code* at all — no AST, no type information, no understanding of what a controller returns or whether a DTO validates. This is the root cause of nearly every finding below.
 
 ---
 
@@ -85,7 +85,7 @@ Source: the pre-NPM validation run performed against this repository (score: **3
 - **Current capability:** `detectProjectProfile()` walks the whole repo tree (depth ≤4, excluding only `node_modules`/`.git`/`.ctx`) merging dependencies from every `package.json` found.
 - **Weakness:** Any nested fixture/example/test `package.json` pollutes top-level stack detection.
 - **Evidence:** `backendguard stack` run on this repository's own root falsely reports Framework: NestJS, ORM: Prisma, Cache: Redis, Authentication: JWT — none of which are true for this Node CLI tool — because it merges dependencies from `eval/skill-routing/fixtures/*/package.json`.
-- **Root cause:** `walk()` in `plugins/ctx/lib/project-context-generator.js` has no fixture/test/example directory exclusion and no workspace-boundary check.
+- **Root cause:** `walk()` in `project-context-generator.js` has no fixture/test/example directory exclusion and no workspace-boundary check.
 - **Required implementation:** Exclude conventional non-source directories (`fixtures`, `__fixtures__`, `test`, `tests`, `__tests__`, `spec`, `specs`, `e2e`, `examples`, `example`) from the walk, in addition to the existing `node_modules`/`.git`/`.ctx` exclusions.
 - **Priority:** P0 (cheap, high-impact, already-proven bug).
 - **Test required:** `test/stack-detection.test.js` — a repo root with a nested `fixtures/other-stack/package.json` must not leak that stack into the root report.
@@ -121,7 +121,7 @@ Source: the pre-NPM validation run performed against this repository (score: **3
 | --- | --- | --- |
 | Gap 1 — compound-clause misclassification | **Fixed** | `classifyRuleClauses()` in `measure.js`; `test/measure.test.js` — "does not flag a required clause's own keyword..." / "still catches a real violation..." |
 | Gap 2 — generic-word keyword extraction | **Fixed** | Word-boundary matching (`keywordMatchPattern()`) + expanded `GENERIC_PROSE_STOPWORDS` in `measure.js`; `test/measure.test.js` — Gap 2 tests |
-| Gap 3 — no structural code understanding | **Implemented (P0 subset)** | `plugins/ctx/lib/ast-security-analyzer.js`, 23+ tests in `test/ast-security-analyzer.test.js`; see Gaps 4-8 for per-check status |
+| Gap 3 — no structural code understanding | **Implemented (P0 subset)** | `ast-security-analyzer.js`, 23+ tests in `test/ast-security-analyzer.test.js`; see Gaps 4-8 for per-check status |
 | Gap 4 — sensitive-field response exposure | **Implemented** | SEC-001; catches both a direct return and a return-via-local-variable (fetch/null-check/return) shape; true positive + true negative + false-positive-control tests |
 | Gap 5 — missing authentication guard | **Implemented** | SEC-002; severity/confidence split for state-changing vs. `GET` routes based on real fixture false-positive review |
 | Gap 6 — hardcoded secret literal | **Implemented** | SEC-003 |

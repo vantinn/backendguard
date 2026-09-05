@@ -6,13 +6,13 @@ This covers how BackendGuard decides whether a completed task actually followed 
 
 BackendGuard has two separate report-shaped outputs that are easy to confuse:
 
-1. **Repository readiness** (`backendguard doctor`, `plugins/ctx/lib/certification.js` — `inspectBackendGuardReady()`): a *static* score of whether a repo has enough `AGENTS.md` rules, rule-pack coverage, and workflows for BackendGuard to be useful at all. It does not look at any specific task or diff. Output: `{ rules, skills, workflows, overall, tier, recommendations }`, tiers Not Ready → Bronze → Silver → Gold.
-2. **Compliance report** (`backendguard report`/`backendguard check`, `plugins/ctx/lib/measure.js` + `reporter.js`): whether *this specific task's* changes actually followed the rules that were scheduled for it. This is the one with severity/category findings.
+1. **Repository readiness** (`backendguard doctor`, `compliance/readiness-scorer.js` — `inspectBackendGuardReady()`): a *static* score of whether a repo has enough `AGENTS.md` rules, rule-pack coverage, and workflows for BackendGuard to be useful at all. It does not look at any specific task or diff. Output: `{ rules, skills, workflows, overall, tier, recommendations }`, tiers Not Ready → Bronze → Silver → Gold.
+2. **Compliance report** (`backendguard report`/`backendguard check`, `compliance/rule-compliance.js` + `compliance/compliance-reporter.js`): whether *this specific task's* changes actually followed the rules that were scheduled for it. This is the one with severity/category findings.
 
 ## Compliance checking pipeline
 
 ```text
-git diff HEAD (or git status fallback)   [measure.js — readGitSnapshot()]
+git diff HEAD (or git status fallback)   [compliance/rule-compliance.js — readGitSnapshot()]
         │
         ▼
 for each scheduled rule:
@@ -22,13 +22,13 @@ for each scheduled rule:
   - search added diff lines for keyword evidence
         │
         ▼
-classify each rule: followed | ignored | unknown | unmeasurable   [measure.js — checkCompliance()]
+classify each rule: followed | ignored | unknown | unmeasurable   [compliance/rule-compliance.js — checkCompliance()]
         │
         ▼
-buildReport()   [reporter.js]  — assembles the full report object
+buildReport()   [compliance/compliance-reporter.js]  — assembles the full report object
         │
         ▼
-buildComplianceSummary()   [reporter.js]  — the severity-ranked Security/Architecture/Database/Performance/Testing view
+buildComplianceSummary()   [compliance/compliance-reporter.js]  — the severity-ranked Security/Architecture/Database/Performance/Testing view
         │
         ▼
 formatReport() → markdown printed by `backendguard report` / `backendguard check`
@@ -50,7 +50,7 @@ This is heuristic keyword matching against a git diff, not static analysis or a 
 
 ## Severity classification
 
-File: `plugins/ctx/lib/reporter.js` — `buildComplianceSummary()`.
+File: `compliance/compliance-reporter.js` — `buildComplianceSummary()`.
 
 Every `ignored`/`unknown`/`followed` compliance item is classified into a category by keyword pattern-matching its rule text (`SEVERITY_RULES`, checked in order — first match wins):
 
@@ -68,19 +68,19 @@ This is intentionally a *heuristic on free-text rule content*, not a structured 
 
 ### Changing severity classification
 
-Edit `SEVERITY_RULES` in `plugins/ctx/lib/reporter.js`. Keep patterns narrow and check order-sensitive — a rule mentioning both "password" and "test" should classify as Security (checked first), not Testing. `test/reporter.test.js` has focused unit tests for this; add a case there for any new pattern.
+Edit `SEVERITY_RULES` in `compliance/compliance-reporter.js`. Keep patterns narrow and check order-sensitive — a rule mentioning both "password" and "test" should classify as Security (checked first), not Testing. `tests/compliance-reporter.test.js` has focused unit tests for this; add a case there for any new pattern.
 
 ## Structural analysis layer
 
-File: `plugins/ctx/lib/ast-security-analyzer.js`, wired into both `backendguard check` (`bin/ctx.js`) and the Stop hook (`stop-hook.js`) via `structuralComplianceForChangedFiles()`.
+File: `analysis/security/nestjs-security-analyzer.js`, wired into both `backendguard check` (`cli/backendguard.js`) and the Stop hook (`agent-context/stop-hook.js`) via `structuralComplianceForChangedFiles()`.
 
-This is a second, independent finding source alongside AGENTS.md rule compliance above. It does not read `AGENTS.md` at all — it parses TypeScript source with the TypeScript compiler API (`ts.createSourceFile`, no full `ts.Program`/type-checker) and pattern-matches on real AST structure: decorators, class members, constructor-parameter generic type arguments, and call-expression shape. Findings are normalized to `{ id, category, severity, confidence, title, detail, remediation, file, line }` and adapted into the same `{ rule, status, evidence, ... }` shape as AGENTS.md compliance items via `toComplianceItems()`, so `reporter.js` renders both through one path — `classifyItem()` in `reporter.js` reads a structural item's explicit `category`/`severity`/`confidence` instead of keyword-guessing them the way it does for AGENTS.md rule content.
+This is a second, independent finding source alongside AGENTS.md rule compliance above. It does not read `AGENTS.md` at all — it parses TypeScript source with the TypeScript compiler API (`ts.createSourceFile`, no full `ts.Program`/type-checker) and pattern-matches on real AST structure: decorators, class members, constructor-parameter generic type arguments, and call-expression shape. Findings are normalized to `{ id, category, severity, confidence, title, detail, remediation, file, line }` and adapted into the same `{ rule, status, evidence, ... }` shape as AGENTS.md compliance items via `toComplianceItems()`, so `compliance/compliance-reporter.js` renders both through one path — `classifyItem()` in `compliance/compliance-reporter.js` reads a structural item's explicit `category`/`severity`/`confidence` instead of keyword-guessing them the way it does for AGENTS.md rule content.
 
 ```text
 git diff HEAD (changed files)
         │
         ▼
-analyzeProjectSource({ cwd })   [ast-security-analyzer.js]
+analyzeProjectSource({ cwd })   [analysis/security/nestjs-security-analyzer.js]
   — parses the WHOLE project (bounded to 400 .ts files), not just the diff,
     because resolving "does this controller leak entity X" requires reading
     the entity/service files even when only the controller changed
@@ -97,7 +97,7 @@ toComplianceItems()  — adapt into the compliance-item shape
 merged with checkCompliance()'s output before buildReport()/buildComplianceSummary()
 ```
 
-Current checks (see the module for exact logic and `test/ast-security-analyzer.test.js` for true-positive/true-negative/false-positive-control coverage of each):
+Current checks (see the module for exact logic and `tests/ast-security-analyzer.test.js` for true-positive/true-negative/false-positive-control coverage of each):
 
 | ID | Check | Confidence |
 | --- | --- | --- |
@@ -112,8 +112,8 @@ Current checks (see the module for exact logic and `test/ast-security-analyzer.t
 
 ### Adding a structural check
 
-Add a new `checkX(sourceFile, relativePath, index?)` function following the existing ones, call it from `analyzeProjectSource()`, and give it a stable `ID` (`SEC-00N`/`DB-00N`/a new prefix for a new category). Add true-positive, true-negative, and false-positive-control cases to `test/ast-security-analyzer.test.js` — the false-positive-control test in particular (a fully secure module using words like "password"/"token"/"query" in benign ways) is the regression guard against the exact failure mode the keyword-diff layer above has: a check that fires on vocabulary instead of structure.
+Add a new `checkX(sourceFile, relativePath, index?)` function following the existing ones, call it from `analyzeProjectSource()`, and give it a stable `ID` (`SEC-00N`/`DB-00N`/a new prefix for a new category). Add true-positive, true-negative, and false-positive-control cases to `tests/ast-security-analyzer.test.js` — the false-positive-control test in particular (a fully secure module using words like "password"/"token"/"query" in benign ways) is the regression guard against the exact failure mode the keyword-diff layer above has: a check that fires on vocabulary instead of structure.
 
 ## Where reports are stored
 
-`~/.ctx/backendguard/workspaces/<workspace-id>/last-report.json` (written by the Stop hook, `plugins/ctx/lib/stop-hook.js`, or directly by `backendguard check`) and `report-history.jsonl` for the full history. See the README's [Runtime Files](../../README.md#runtime-files) section for the full layout.
+`~/.backendguard/workspaces/<workspace-id>/last-report.json` (written by the Stop hook, `agent-context/stop-hook.js`, or directly by `backendguard check`) and `report-history.jsonl` for the full history. See the README's [Runtime Files](../../README.md#runtime-files) section for the full layout.

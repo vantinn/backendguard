@@ -1,80 +1,115 @@
 # Architecture Overview
 
-This document maps BackendGuard's actual code to the product's domain vocabulary. It exists so a new contributor (or a returning one) can find the right file in minutes instead of grepping the whole tree.
+This document maps BackendGuard's domain vocabulary onto the code. It exists so a new contributor — or a returning one — can find the right file in minutes instead of grepping the tree.
 
-**Read this first, then go straight to the file.** The other documents in `docs/architecture/` go deeper on the rule engine, compliance engine, and AI-agent integrations.
+**Read this first, then go straight to the file.** The other documents go deeper: [analysis.md](analysis.md) (static analyzers), [rule-engine.md](rule-engine.md) (rules and retrieval), [compliance-engine.md](compliance-engine.md) (reports and scoring), [integrations.md](integrations.md) (agents and MCP).
 
-## What BackendGuard actually is, architecturally
+## What BackendGuard is, architecturally
 
-BackendGuard is a Node.js CLI + local MCP server. It is **not** a TypeScript hexagonal-architecture service — there is no build step, no formal domain classes, no dependency-injection container. The concepts below (`EngineeringRule`, `BackendStack`, `ComplianceFinding`, ...) are real domain concepts the product is built around, but in code they are plain JS objects passed between focused, single-responsibility modules under `plugins/ctx/lib/`. That is a legitimate, low-overhead architecture for a CLI tool of this size, and this document treats it as the target shape rather than pretending a class hierarchy exists that doesn't.
+A Node.js CLI plus a local MCP server. There is no build step, no formal domain classes, no dependency-injection container. The concepts below are real, but in code they are plain objects passed between focused modules grouped into domain directories. That is a legitimate, low-overhead architecture for a tool of this size, and this document treats it as the target shape rather than pretending a class hierarchy exists that does not.
+
+The root directory is the architecture:
+
+```text
+cli/            command table, argument parsing, per-command --help, exit codes
+rules/          rule engine: AGENTS.md reader, parser, scorer, context scheduler
+retrieval/      task-aware retrieval: embeddings, import graph, file ranking, code-graph MCP
+analysis/       static analyzers + the analyzer registry
+compliance/     diff compliance, report building, deterministic category scoring
+agent-context/  what reaches the agent: hooks, output budget, skill/workflow sync, starter context
+integrations/   per-agent installers + the MCP server
+skills/         the markdown rule packs themselves
+runtime/        shared infrastructure: process spawning, fs, git ignore, telemetry, terminal UI
+evaluation/     benchmarks: detection quality, routing, hallucination, scale, release readiness
+tests/          all automated tests
+tooling/        maintenance scripts
+plugins/backendguard/   the Codex plugin: manifests and thin hook/MCP entrypoints
+```
 
 ## Domain map
 
 | Domain concept | What it means | Where it lives | Real shape |
 | --- | --- | --- | --- |
-| Backend Project / Stack | The detected framework, language, database, ORM, cache, auth for the repo BackendGuard is running in | `plugins/ctx/lib/project-context-generator.js` — `detectProjectProfile()`, `buildStackReport()`, `detectStack()` | `{ framework, language, database, orm, cache, queue, containerization, authentication, validation, ci, testing, platforms }` — every field is `null` unless backed by a dependency/file match |
-| Engineering Task | The current prompt/task text an agent is about to work on | Passed as `task`/`prompt` string through `scoreContext()`, `scoreRules()` — not a wrapped object, just the string, tokenized on demand | n/a (string) |
-| Engineering Rule | One bullet/paragraph parsed out of `AGENTS.md` | `plugins/ctx/lib/analyzer.js` — `parseRules()`, `scoreRules()` | `{ id, sourcePath, content, originalOrder }`, scored rules add `.score` and `.reasons` |
-| Rule Pack (a.k.a. "skill") | A structured, installable bundle of rules for one technology (security, nestjs, postgresql, typeorm, prisma, redis, ...) with prompt/file/dependency triggers | `community-skills/<pack>/SKILL.md` + `skill.yaml`; parsed by `plugins/ctx/lib/skill-discoverer.js` — `parseSkillMetadata()`, `normalizeSkillMetadata()` | `{ id, name, positivePrompts, files, dependencies, negativePrompts, negativeFiles, negativeDependencies, workflow, relatedSkills, ... }` — see [rule-engine.md](rule-engine.md) |
-| Context Retrieval | Ranking rules/files/skills/workflows against the current task and assembling the text an agent actually sees | `plugins/ctx/lib/score-context.js` (`scoreContext`, orchestrator) → `plugins/ctx/lib/scheduler.js` (`scheduleContext`, layout) | See [rule-engine.md](rule-engine.md) |
-| Compliance Check | Diffing the working tree against the rules that were scheduled for the task | `plugins/ctx/lib/measure.js` — `checkCompliance()`, `readGitSnapshot()` | Array of `{ rule, status: followed\|ignored\|unknown\|unmeasurable, kind, keywords, evidence, matchedLines? }` |
-| Compliance Report | The full post-task summary: rule outcomes plus the severity-ranked Security/Architecture/Database/Performance/Testing breakdown | `plugins/ctx/lib/reporter.js` — `buildReport()`, `buildComplianceSummary()`, `formatReport()` | See [compliance-engine.md](compliance-engine.md) |
-| Finding | One severity-ranked compliance issue inside a report | `reporter.js` — `buildComplianceSummary()` issues array | `{ severity: CRITICAL\|HIGH\|MEDIUM\|LOW\|INFO, category, summary, evidence }` |
-| Repository Readiness | Whether a repo has enough `AGENTS.md` rules / rule packs / workflows for BackendGuard to be useful (the "BackendGuard Ready" badge) | `plugins/ctx/lib/certification.js` — `inspectBackendGuardReady()` | `{ rules, skills, workflows, overall, tier, recommendations }` |
-| AI Agent Integration | How prompt context gets into Codex / Claude Code / Antigravity / Copilot, and how each agent's hooks/MCP config get installed | `plugins/ctx/integrations/{claude,antigravity,copilot}/` (Codex is the primary plugin itself — see [integrations.md](integrations.md)) | n/a |
+| **Backend Stack** | The framework, language, database, ORM, cache and auth this repository actually uses, with the evidence for each | `analysis/stack-detector.js` — `detectProjectProfile()`, `buildStackReport()`, `detectStack()` | `{ framework, language, database, orm, cache, queue, containerization, authentication, validation, ci, testing, observability, platforms, evidence }`. Every field is `null` unless backed by a dependency, file, or config match; `evidence[field]` says which. |
+| **Engineering Task** | The prompt an agent is about to act on | A plain string passed through `scoreContext()` / `scoreRules()`, tokenized on demand | n/a |
+| **Engineering Rule** | One bullet or paragraph parsed out of `AGENTS.md` | `rules/rule-engine.js` — `parseRules()`, `filterActionableRules()`, `scoreRules()` | `{ id, sourcePath, content, originalOrder }`; scored rules add `.score` and `.reasons` |
+| **Rule Pack** ("skill") | An installable bundle of guidance for one technology, with prompt/file/dependency triggers | `skills/<pack>/SKILL.md` + `skill.yaml`, parsed by `agent-context/skill-discoverer.js` | See [rule-engine.md](rule-engine.md) |
+| **Context Retrieval** | Ranking rules, files, packs and workflows against the task and assembling what the agent sees | `retrieval/context-retriever.js` orchestrates; `retrieval/file-retriever.js` ranks files; `rules/context-scheduler.js` lays out the budget | See [rule-engine.md](rule-engine.md) |
+| **Analyzer** | A registered unit of static analysis for one technology or concern | `analysis/analyzer-registry.js`, `analysis/{security,database,performance,scalability}/` | `{ id, title, categories, appliesTo?, analyze }` — see [analysis.md](analysis.md) |
+| **Finding** | One evidence-anchored defect | `analysis/finding.js` — `createFinding()` | `{ id, category, severity, confidence, analyzer, title, detail, evidence, remediation, file, line, column }` |
+| **Compliance Check** | Diffing the working tree against the rules scheduled for the task | `compliance/rule-compliance.js` — `checkCompliance()`, `readGitSnapshot()` | `{ rule, status: followed\|ignored\|unknown\|unmeasurable, kind, keywords, evidence, matchedLines? }` |
+| **Compliance Report** | The post-task summary: rule outcomes, findings, and per-category scores | `compliance/compliance-reporter.js` — `buildReport()`, `buildComplianceSummary()`, `buildComplianceScorecard()` | See [compliance-engine.md](compliance-engine.md) |
+| **Repository Readiness** | Whether a repository has enough rules, packs and workflows for BackendGuard to help at all | `compliance/readiness-scorer.js` — `inspectBackendGuardReady()` | `{ rules, skills, workflows, overall, tier, recommendations }` |
+| **Agent Integration** | How context reaches Codex / Claude Code / Antigravity / Copilot | `integrations/{claude,antigravity,copilot,codex}/`, `integrations/mcp/` | See [integrations.md](integrations.md) |
 
-## The end-to-end flow
+## The two analysis layers
+
+These are genuinely different in strength, and conflating them is how a tool loses trust.
+
+| | Structural analysis | Rule-keyword compliance |
+| --- | --- | --- |
+| Reads | Parsed TypeScript, `schema.prisma`, `.sql` | The text of `AGENTS.md` rules and the added lines of a git diff |
+| Answers | "This route has no guard." | "Did the diff mention words from this rule?" |
+| Evidence | The exact construct, at `file:line:column` | A matched line |
+| Confidence | `certain` … `low`, per check | `heuristic` |
+| Where | `analysis/` — see [analysis.md](analysis.md) | `compliance/rule-compliance.js` |
+
+`backendguard analyze` runs the structural layer alone. `backendguard check` runs both over the current diff and merges them into one report.
+
+## End-to-end: an agent prompt
 
 ```text
-AI coding agent submits a prompt
+Agent submits a prompt
         │
         ▼
-UserPromptSubmit hook (plugins/ctx/bin/on-prompt.js)
+UserPromptSubmit hook            plugins/backendguard/bin/on-prompt.js
         │
         ▼
-scoreContext()  [score-context.js]
-  ├─ parseRules() + scoreRules()        [analyzer.js]        — rank AGENTS.md rules against the task
-  ├─ file retrieval                     [file-embedding-retriever.js, import-graph.js]
-  ├─ rule-pack ("skill") retrieval      [skill-discoverer.js]
-  └─ workflow retrieval                 [workflow-discoverer.js]
+scoreContext()                   retrieval/context-retriever.js
+  ├─ parseRules(), scoreRules()   rules/rule-engine.js          rank AGENTS.md rules against the task
+  ├─ findRelevantFiles()          retrieval/file-retriever.js   rank source files
+  ├─ suggestSkills()              agent-context/skill-discoverer.js
+  └─ suggestWorkflows()           agent-context/workflow-discoverer.js
         │
         ▼
-scheduleContext()  [scheduler.js]  — lays out the final injected text (critical rules, suggested files, skills, workflow)
+scheduleContext()                rules/context-scheduler.js     apply the context budget
         │
         ▼
-Agent does the task
-        │
-        ▼
-Stop hook (plugins/ctx/bin/on-stop.js)
-        │
-        ▼
-readGitSnapshot() + checkCompliance()  [measure.js]  — diff the working tree against the scheduled rules
-        │
-        ▼
-buildReport() + buildComplianceSummary()  [reporter.js]  — severity-ranked compliance report
-        │
-        ▼
-written to ~/.ctx/backendguard/workspaces/<id>/last-report.json
-        │
-        ▼
-backendguard report / backendguard evidence / backendguard check
+Injected into the agent's prompt
 ```
 
-`backendguard stack` and `backendguard check` (`bin/ctx.js`) run the same `detectStack()`/`checkCompliance()` machinery on demand, outside the hook lifecycle, for a developer running the CLI directly.
+## End-to-end: `backendguard analyze`
 
-## Where do I add X?
+```text
+detectStack()                    analysis/stack-detector.js     what is this project, with evidence
+        │
+        ▼
+buildSourceIndex()               analysis/source-index.js       one parse; entities, controllers, DTOs, repo fields
+        │
+        ▼
+registry.run()                   analysis/analyzer-registry.js  every analyzer whose appliesTo accepts this stack
+        │
+        ▼
+dedupe + supersede + sort        analysis/finding.js
+        │
+        ▼
+Formatted report, or --json      cli/analyze-command.js
+```
 
-| I want to... | Go to |
-| --- | --- |
-| Add a new engineering rule for an existing technology | Edit `AGENTS.md` in the target repo, or add a rule pack — see [rule-engine.md](rule-engine.md#adding-a-rule-pack) |
-| Add support for a new framework/ORM/database | `detectProjectProfile()` in `project-context-generator.js` (detection) + a new `community-skills/<pack>/` (rules) — see [rule-engine.md](rule-engine.md#adding-a-rule-pack) |
-| Change what counts as a compliance violation | `checkCompliance()` in `measure.js` — see [compliance-engine.md](compliance-engine.md) |
-| Change severity/category classification | `SEVERITY_RULES` in `reporter.js` — see [compliance-engine.md](compliance-engine.md#severity-classification) |
-| Add a new AI agent integration | `plugins/ctx/integrations/<agent>/` — see [integrations.md](integrations.md#adding-a-new-agent) |
-| Add a new CLI command | `bin/ctx.js` — the `command === "..."` dispatch chain near the bottom of the file |
-| Add a new MCP tool | `plugins/ctx/mcp/backendguard-server.js` |
-| Change stack detection | `detectProjectProfile()` / `buildStackReport()` in `project-context-generator.js` |
+## End-to-end: `backendguard check`
 
-## Non-goals of this refactor
+```text
+readGitSnapshot()                compliance/rule-compliance.js  the current diff
+        │
+        ├─► checkCompliance()                                   rule-keyword layer over added lines
+        └─► analyzeChangedFiles()   analysis/index.js           structural layer, scoped to changed files
+                    │
+                    ▼
+        buildReport() + buildComplianceScorecard()              compliance/compliance-reporter.js
+```
 
-This documentation pass and the `plugins/ctx/integrations/` grouping (see [integrations.md](integrations.md)) intentionally did **not** physically restructure `plugins/ctx/lib/` into `domain/application/infrastructure/analysis/retrieval/` directories. The existing flat `lib/` layout already uses specific, responsibility-named files (`analyzer.js`, `scheduler.js`, `reporter.js`, `measure.js`, `certification.js`, `skill-discoverer.js`, `embedding-scorer.js`, ...) — the kind of layered TypeScript tree a larger service would want doesn't pay for itself in a single-package CLI tool with no compiler-enforced module boundaries. Forcing it on would be churn without a corresponding clarity gain; this document exists to provide that clarity instead.
+The structural layer analyzes the **whole project** and then filters output to the changed files: cross-file resolution (entity → service → controller) needs files the diff did not touch, but the report should still answer "what did this change introduce or leave behind" rather than dumping every pre-existing finding on every run.
+
+## Runtime state
+
+Everything BackendGuard writes lives under `~/.backendguard/` (a pre-0.9.0 `~/.ctx/backendguard/` is still read if present) plus a `.backendguard/` marker directory inside each analysed project, which the tool adds to that project's `.gitignore`. See the README's [Runtime Files](../../README.md#runtime-files) section.

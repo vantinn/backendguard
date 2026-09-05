@@ -1,0 +1,50 @@
+{
+  "name": "nest-typeorm-postgres",
+  "description": "NestJS + TypeORM + PostgreSQL + Redis + Docker + JWT, with auth/users/orders/products/payments/notifications modules. Each defect below is deliberately planted; every file not listed is a control that must stay clean.",
+  "stack": {
+    "framework": "NestJS",
+    "language": "TypeScript",
+    "database": "PostgreSQL",
+    "orm": "TypeORM",
+    "cache": "Redis",
+    "authentication": "JWT",
+    "containerization": "Docker"
+  },
+  "expected": [
+    { "id": "SEC-001", "file": "src/users/users.controller.ts", "why": "returns the raw User entity carrying passwordHash/refreshToken" },
+    { "id": "SEC-002", "file": "src/users/users.controller.ts", "why": "unauthenticated POST /users" },
+    { "id": "SEC-002", "file": "src/payments/payments.controller.ts", "why": "unauthenticated POST /payments/capture" },
+    { "id": "SEC-003", "file": "src/auth/auth.module.ts", "why": "JWT signing key committed as a literal" },
+    { "id": "SEC-004", "file": "src/users/users.controller.ts", "why": "@Body() body: any" },
+    { "id": "SEC-004", "file": "src/payments/payments.controller.ts", "why": "CapturePaymentDto has no class-validator decorators" },
+    { "id": "SEC-005", "file": "src/payments/payments.controller.ts", "why": "error.message returned to the client" },
+    { "id": "SEC-006", "file": "src/main.ts", "why": "CORS origin '*' with credentials: true" },
+    { "id": "SEC-007", "file": "src/auth/auth.controller.ts", "why": "login endpoint with no throttling" },
+    { "id": "TORM-001", "file": "src/users/users.service.ts", "why": "usersRepo.find() with no pagination" },
+    { "id": "TORM-002", "file": "src/orders/orders.service.ts", "why": "ordersRepo.findOne inside a for-of loop" },
+    { "id": "TORM-003", "file": "src/payments/payments.service.ts", "why": "two repository saves with no transaction" },
+    { "id": "TORM-004", "file": "src/orders/order.entity.ts", "why": "@ManyToOne(..., { eager: true })" },
+    { "id": "TORM-005", "file": "src/orders/order.entity.ts", "why": "@ManyToOne foreign key with no @Index()" },
+    { "id": "TORM-007", "file": "src/data-source.ts", "why": "synchronize: true" },
+    { "id": "PG-001", "file": "migrations/1700000000000-AddUserStatus.sql", "why": "ADD COLUMN NOT NULL with no default" },
+    { "id": "PG-002", "file": "migrations/1700000000000-AddUserStatus.sql", "why": "CREATE INDEX without CONCURRENTLY" },
+    { "id": "PERF-001", "file": "src/notifications/notifications.service.ts", "why": "fetch() inside a for-of loop" },
+    { "id": "SCALE-001", "file": "src/notifications/notifications.service.ts", "why": "Map held on a singleton service" },
+    { "id": "SCALE-006", "file": "src/main.ts", "why": "containerised with no SIGTERM/shutdown handling" },
+    { "id": "SCALE-007", "file": "src/main.ts", "why": "containerised with no health/readiness route" }
+  ],
+  "controls": [
+    { "file": "src/products/products.controller.ts", "why": "guarded controller, paginated read, DTO return type" },
+    { "file": "src/products/products.service.ts", "why": "bounded find({ take, skip }) mapped through a response DTO" },
+    { "file": "src/products/product.entity.ts", "why": "indexed and unique columns" },
+    { "file": "src/products/dto/product-response.dto.ts", "why": "plain response DTO" },
+    { "file": "src/auth/dto/login.dto.ts", "why": "fully validated DTO" },
+    { "file": "src/common/jwt-auth.guard.ts", "why": "the guard itself" },
+    { "file": "src/common/config.ts", "why": "secret-shaped names read from process.env, plus a 'changeme' placeholder" },
+    { "file": "migrations/1700000001000-BackfillSafely.sql", "why": "nullable add, CONCURRENTLY index, scoped UPDATE" }
+  ],
+  "tolerated": [
+    { "id": "SEC-002", "file": "src/users/users.controller.ts", "why": "GET /users/:id with no guard is reported at low confidence; genuinely ambiguous" },
+    { "id": "TORM-005", "file": "src/users/user.entity.ts", "why": "email/refreshToken lookup columns reported at low confidence" }
+  ]
+}

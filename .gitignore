@@ -1,29 +1,25 @@
 node_modules/
 coverage/
-.backendguard/
 *.log
-*.ctx-mcp**
+
+# BackendGuard runtime state (written into whatever project the tool runs in)
+.backendguard/
+*.backendguard-mcp**
+
+# Optional third-party integrations' local state
 .code-review-graph
-~
-.sock-test**
-claudekit-engineer/
 .ruler/
 
-
-# START Ruler Generated Files
-/.codex/config.toml
-/.codex/config.toml.bak
-/.mcp.json
-/.mcp.json.bak
+# Agent install artefacts written into a project by `backendguard install`
+.claude/settings.json
+.gemini/
+copilot-instructions.md
+.codex/marketplaces/
 /AGENTS.md
 /AGENTS.md.bak
 /CLAUDE.md
 /CLAUDE.md.bak
-# END Ruler Generated Files
-
-# BackendGuard install artefacts
-.codex/marketplaces/backendguard/
-.claude/settings.json
-.gemini/
-copilot-instructions.md
-.codex
+/.mcp.json
+/.mcp.json.bak
+/.codex/config.toml
+/.codex/config.toml.bak

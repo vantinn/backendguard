@@ -1,0 +1,8 @@
+{
+  "name": "billing-api",
+  "dependencies": {
+    "@nestjs/core": "^10.4.0",
+    "@prisma/client": "^5.19.0",
+    "prisma": "^5.19.0"
+  }
+}

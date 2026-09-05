@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "backendguard-mcp": {
+      "command": "node",
+      "args": [
+        "./mcp/server.js"
+      ]
+    }
+  }
+}
