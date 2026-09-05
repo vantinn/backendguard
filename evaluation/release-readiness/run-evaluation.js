@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -115,6 +116,79 @@ function runCommand(root, command, args, { timeout = 900_000 } = {}) {
   }
 }
 
+/**
+ * Runs the repository's own test suite and reports how many tests passed.
+ *
+ * Three things this deliberately does not do, each of which broke a CI run:
+ *
+ *  - It does not write the JSON report to `/dev/stdout`. That happened to work
+ *    on macOS and silently produced nothing on a Linux runner, where the
+ *    reporter's write went to a pipe the parser never read back. The evaluator
+ *    then reported "0 passed, 0 failed" and failed the release gate while the
+ *    workflow's own `npm test` step had just passed 398 tests.
+ *  - It does not shell out to `npx`, which can attempt a network install when
+ *    resolution fails. The locally installed vitest entrypoint is executed
+ *    directly with the current Node binary, which is also Windows-safe.
+ *  - It does not fail silently. When the suite genuinely cannot be executed the
+ *    reason is captured and printed, so a broken measurement is never
+ *    indistinguishable from a broken product.
+ *
+ * @returns {{ran: boolean, passed: number, failed: number, error?: string}}
+ */
+export function runTestSuite(root) {
+  const vitestEntry = path.join(root, "node_modules", "vitest", "vitest.mjs");
+  if (!fs.existsSync(vitestEntry)) {
+    return { ran: false, passed: 0, failed: 0, error: "vitest is not installed — run `npm ci` first" };
+  }
+
+  const reportPath = path.join(fs.mkdtempSync(path.join(os.tmpdir(), "backendguard-vitest-")), "report.json");
+  try {
+    // vitest exits non-zero when a test fails, which is a result, not an error:
+    // the report file is written either way, so it is read regardless of code.
+    const run = runCommand(root, process.execPath, [vitestEntry, "run", "--reporter=json", `--outputFile=${reportPath}`]);
+
+    if (fs.existsSync(reportPath)) {
+      try {
+        const report = JSON.parse(fs.readFileSync(reportPath, "utf8"));
+        if (typeof report.numPassedTests === "number") {
+          return { ran: true, passed: report.numPassedTests, failed: report.numFailedTests || 0 };
+        }
+      } catch {
+        // Fall through to the text fallback below.
+      }
+    }
+
+    // Fallback: parse the human reporter. ANSI codes are stripped first —
+    // vitest colourises when it detects a terminal, and the summary regex
+    // otherwise never matches.
+    const fallback = runCommand(root, process.execPath, [vitestEntry, "run", "--reporter=dot"]);
+    const summary = parseVitestSummary(`${fallback.stdout}\n${fallback.stderr}`);
+    if (summary) return { ran: true, ...summary };
+
+    const reason = stripAnsi(`${run.stderr}\n${fallback.stderr}`).trim().split("\n").filter(Boolean).slice(-3).join(" | ");
+    return { ran: false, passed: 0, failed: 0, error: reason || "vitest produced no parseable summary" };
+  } finally {
+    fs.rmSync(path.dirname(reportPath), { recursive: true, force: true });
+  }
+}
+
+/**
+ * Reads "Tests  1 failed | 397 passed (398)" out of vitest's human reporter.
+ * ANSI colour codes are stripped first: vitest colourises whenever it thinks a
+ * terminal is attached, and without stripping the summary never matched.
+ *
+ * @returns {{passed: number, failed: number} | null}
+ */
+export function parseVitestSummary(text) {
+  const match = stripAnsi(text).match(/Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(\d+)\s+passed/);
+  return match ? { failed: Number(match[1] || 0), passed: Number(match[2]) } : null;
+}
+
+export function stripAnsi(text) {
+  // eslint-disable-next-line no-control-regex
+  return String(text).replace(/\u001B\[[0-9;]*[A-Za-z]/g, "");
+}
+
 // ---------------------------------------------------------------------------
 // Checks. Each returns { id, title, points, max, evidence }.
 // ---------------------------------------------------------------------------
@@ -131,11 +205,13 @@ function correctnessChecks(root, context) {
       : []);
   const { passed, failed, ran } = context.testResults;
 
+  const failureReason = context.testResults.error ? `test suite could not be executed: ${context.testResults.error}` : "test suite could not be executed";
+
   return [
     check("tests-run", "The test suite runs to completion", 6, ran ? 6 : 0,
-      ran ? `${passed} passed, ${failed} failed` : "test suite could not be executed"),
+      ran ? `${passed} passed, ${failed} failed` : failureReason),
     check("tests-pass", "Every test passes", 6, ran && failed === 0 ? 6 : 0,
-      ran ? `${failed} failing test(s)` : "not run"),
+      ran ? `${failed} failing test(s)` : "not run — see the row above"),
     check("test-breadth", "The suite covers the codebase broadly", 6,
       Math.min(6, Math.round((testFiles.length / 50) * 6)),
       `${testFiles.length} test files, ${passed} assertions-bearing tests passed`)
@@ -327,19 +403,7 @@ async function gatherContext(root, { runSlow = true } = {}) {
   };
 
   // --- tests
-  if (runSlow) {
-    const result = runCommand(root, "npx", ["vitest", "run", "--reporter=json", "--outputFile=/dev/stdout"]);
-    const match = (result.stdout + result.stderr).match(/"numPassedTests":(\d+).*?"numFailedTests":(\d+)/s);
-    if (match) {
-      context.testResults = { ran: true, passed: Number(match[1]), failed: Number(match[2]) };
-    } else {
-      const fallback = runCommand(root, "npx", ["vitest", "run", "--reporter=dot"]);
-      const summary = (fallback.stdout + fallback.stderr).match(/Tests\s+(?:(\d+) failed \| )?(\d+) passed/);
-      if (summary) {
-        context.testResults = { ran: true, failed: Number(summary[1] || 0), passed: Number(summary[2]) };
-      }
-    }
-  }
+  if (runSlow) context.testResults = runTestSuite(root);
 
   // --- analyzers and finding vocabulary
   const cliPath = exists(root, "cli/backendguard.js") ? "cli/backendguard.js" : (exists(root, "bin/ctx.js") ? "bin/ctx.js" : null);
@@ -555,7 +619,9 @@ function evaluateGates(root, context) {
 
   return [
     gate("tests-pass", context.testResults.ran && context.testResults.failed === 0,
-      `${context.testResults.passed} passed, ${context.testResults.failed} failed`),
+      context.testResults.ran
+        ? `${context.testResults.passed} passed, ${context.testResults.failed} failed`
+        : `suite not executed: ${context.testResults.error || "unknown reason"}`),
     gate("no-known-critical", shellTrue === 0 && leakedPaths === 0,
       `${shellTrue} shell-injection site(s), ${leakedPaths} leaked path(s)`),
     gate("package-installs", context.packaging.cleanInstall, context.packaging.evidence),
