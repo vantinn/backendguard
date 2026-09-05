@@ -99,12 +99,42 @@ const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 1 day
 
 // ────────────────────────────── HTTP fetch ────────────────────────────────
 
-function fetchUrl(url, timeoutMs = 10000) {
+/** A README is tens of kilobytes; anything past this is not one. */
+const MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+const MAX_REDIRECTS = 5;
+
+/**
+ * Fetches a skill-library README.
+ *
+ * Redirects are followed, but bounded and restricted to https: an unbounded
+ * recursive follow means a server answering 302 with its own URL recurses
+ * until the stack runs out, and following a redirect to http would silently
+ * downgrade the transport. The body is capped for the same reason a timeout
+ * exists — this runs against a third-party host BackendGuard does not control.
+ */
+function fetchUrl(url, timeoutMs = 10000, redirectsLeft = MAX_REDIRECTS) {
   return new Promise((resolve, reject) => {
-    const req = https.get(url, { timeout: timeoutMs }, (res) => {
-      // Follow redirects (301/302/307/308)
+    let target;
+    try {
+      target = new URL(url);
+    } catch {
+      reject(new Error(`Invalid skill library URL: ${url}`));
+      return;
+    }
+    if (target.protocol !== "https:") {
+      reject(new Error(`Refusing to fetch a skill library over ${target.protocol.replace(":", "")}: ${url}`));
+      return;
+    }
+
+    const req = https.get(target, { timeout: timeoutMs }, (res) => {
       if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-        fetchUrl(res.headers.location, timeoutMs).then(resolve, reject);
+        res.resume();
+        if (redirectsLeft <= 0) {
+          reject(new Error(`Too many redirects fetching ${url}`));
+          return;
+        }
+        const next = new URL(res.headers.location, target).toString();
+        fetchUrl(next, timeoutMs, redirectsLeft - 1).then(resolve, reject);
         return;
       }
       if (res.statusCode !== 200) {
@@ -113,7 +143,16 @@ function fetchUrl(url, timeoutMs = 10000) {
         return;
       }
       const chunks = [];
-      res.on("data", (chunk) => chunks.push(chunk));
+      let bytes = 0;
+      res.on("data", (chunk) => {
+        bytes += chunk.length;
+        if (bytes > MAX_RESPONSE_BYTES) {
+          res.destroy();
+          reject(new Error(`Response from ${url} exceeded ${MAX_RESPONSE_BYTES} bytes`));
+          return;
+        }
+        chunks.push(chunk);
+      });
       res.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
       res.on("error", reject);
     });
