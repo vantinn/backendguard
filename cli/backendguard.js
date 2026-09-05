@@ -37,7 +37,14 @@ import { writeInnerGitignore, ensureRootGitignore } from "../runtime/gitignore.j
 import { dedupeAgentVisibleSkills, repairSkillSymlinks, syncSkills, detectExistingSkills } from "../agent-context/skill-sync.js";
 import { diagnoseSkills, scanSkills, warmSkillEmbeddings } from "../agent-context/skill-discoverer.js";
 import { parsePassthroughArgs, runPassthrough } from "../runtime/passthrough.js";
-import { parseAgentList, parseSetupArgs, setupSummaryLines } from "../runtime/setup-wizard.js";
+import { parseSetupArgs, setupSummaryLines } from "../runtime/setup-wizard.js";
+import {
+  agentSelectionOptions,
+  assertKnownAgent,
+  emptyAgentSelectionError,
+  externalAgentName,
+  parseInstallAgents
+} from "../runtime/agents.js";
 import { multiSelect } from "../runtime/multi-select.js";
 import { configureOutputSections, enabledOutputSectionsLabel, loadOutputConfig, outputConfigLimits, outputConfigLimitsLabel } from "../agent-context/output-config.js";
 import { syncWorkflows, warmWorkflowEmbeddings } from "../agent-context/workflow-discoverer.js";
@@ -50,7 +57,8 @@ import { detectStack, formatStackReport } from "../analysis/stack-detector.js";
 import { formatProjectContextGeneration, generateProjectContext } from "../agent-context/starter-context-generator.js";
 import { retrievalMode } from "../agent-context/prompt-hook.js";
 import { COMMANDS, findCommand, renderCommandHelp, renderUsage, resolveCommandName, wantsHelp } from "./command-registry.js";
-import { EXIT, EnvironmentError, UsageError, exitCodeFor, formatCliError } from "./exit-codes.js";
+import { EXIT, EnvironmentError, IntegrationError, UsageError, exitCodeFor, formatCliError } from "./exit-codes.js";
+import { isExpectedError } from "../runtime/errors.js";
 import { meetsSeverity, parseSeverity, rejectUnknownFlags, resolveTargetDirectory } from "./options.js";
 import { runAnalyzeCommand } from "./analyze-command.js";
 
@@ -192,29 +200,13 @@ function usage() {
   return renderUsage();
 }
 
-const SUPPORTED_AGENTS = [
-  { label: "Codex",              value: "codex",   selected: false },
-  { label: "Claude Code",       value: "claude",  selected: false },
-  { label: "Antigravity",         value: "agy",     selected: false },
-  { label: "GitHub Copilot",     value: "copilot", selected: false }
-];
-
+/**
+ * Agent names are validated by `runtime/agents.js`, which raises a `UsageError`
+ * — a typo is the user's, so it prints one actionable line and exits 2 instead
+ * of claiming BackendGuard has a bug.
+ */
 function normalizeInstallAgent(agent) {
-  const normalized = String(agent || "").trim().toLowerCase();
-  if (/[|/]/.test(normalized)) {
-    throw new Error([
-      `Invalid agent '${agent}'.`,
-      "Install one agent per command:",
-      "  backendguard install --agent codex",
-      "  backendguard install --agent claude",
-      "  backendguard install --agent antigravity",
-      "  backendguard install --agent copilot",
-      "",
-      "Do not run `backendguard install --agent codex|claude|antigravity|copilot`: `|` is a shell pipe."
-    ].join("\n"));
-  }
-  if (normalized === "antigravity") return "agy";
-  return normalized;
+  return assertKnownAgent(agent);
 }
 
 function leaderboardAgentsFromArgs(args) {
@@ -425,7 +417,11 @@ async function install({ copy = false, agent = "codex" } = {}) {
     }
 
     if (agent !== "codex") {
-      throw new Error(`Unknown agent '${agent}'. Expected codex, claude, agy, or copilot.`);
+      // Unreachable through the CLI — argument parsing validates names first —
+      // but kept so a direct call to install() still fails as a usage problem.
+      throw new UsageError(`Unknown agent '${agent}'.`, {
+        hint: "Supported agents: codex, claude, agy, antigravity, copilot."
+      });
     }
 
     progress.step(10, "copying marketplace");
@@ -546,7 +542,15 @@ function runCodex(args) {
     // — the progress spinner already provides feedback.
   } catch (error) {
     const status = typeof error.status === "number" ? error.status : 1;
-    throw new Error(`codex ${args.join(" ")} failed with exit code ${status}. Make sure Codex CLI is installed and authenticated.`);
+    if (error?.code === "ENOENT") {
+      throw new EnvironmentError("The Codex CLI was not found on PATH.", {
+        hint: "Install Codex and sign in, or install a different agent: backendguard install claude"
+      });
+    }
+    throw new IntegrationError(`\`codex ${args.join(" ")}\` failed with exit code ${status}.`, {
+      integration: "codex",
+      hint: "Check that the Codex CLI is installed and authenticated (`codex --version`)."
+    });
   }
 }
 
@@ -565,7 +569,10 @@ function loadLastReport() {
       return JSON.parse(fs.readFileSync(candidate, "utf8"));
     }
   }
-  throw new Error("No BackendGuard report found. Run a Codex task with the BackendGuard plugin enabled first.");
+  throw new EnvironmentError("No BackendGuard report found for this workspace.", {
+    hint: "Run an agent task with BackendGuard enabled so the Stop hook can write one, "
+      + "or run `backendguard check` to analyze uncommitted changes directly."
+  });
 }
 
 function dataRoot() {
@@ -786,7 +793,11 @@ function printRetrievalMode(mode = {}) {
 }
 
 async function skillsDoctor(task) {
-  if (!String(task || "").trim()) throw new Error('Usage: backendguard skills doctor -- "task"');
+  if (!String(task || "").trim()) {
+    throw new UsageError("A task description is required for `backendguard rules doctor`.", {
+      hint: 'Example: backendguard rules doctor -- "add a paginated orders endpoint"'
+    });
+  }
   const result = await diagnoseSkills({
     cwd: process.cwd(),
     prompt: task,
@@ -942,7 +953,15 @@ async function askOutputLimit({ option, currentValue }) {
 async function setup({ args = [], cwd = process.cwd() } = {}) {
   const options = parseSetupArgs(args);
   const interactive = !options.yes && process.stdin.isTTY;
+  // Non-interactive runs have no prompt to fill the selection in, so a missing
+  // agent is knowable before anything is printed or written.
+  if (!interactive && !options.agents.length) {
+    throw emptyAgentSelectionError({ command: "backendguard setup" });
+  }
   let outputConfig = loadOutputConfig({ dataRoot: dataRoot() });
+
+  /** Optional integrations that failed; reported at the end instead of aborting. */
+  const degraded = [];
 
   printSetupBanner();
   console.log(`◇ Installation directory:\n│  ${cwd}`);
@@ -959,14 +978,13 @@ async function setup({ args = [], cwd = process.cwd() } = {}) {
       rl.close();
       const selected = await multiSelect({
         message: "Select agents to install:",
-        options: [
-          { label: "Codex",              value: "codex",   selected: options.agents.includes("codex") },
-          { label: "Claude",             value: "claude",  selected: options.agents.includes("claude") },
-          { label: "Antigravity",         value: "agy",     selected: options.agents.includes("agy") },
-          { label: "GitHub Copilot",     value: "copilot", selected: options.agents.includes("copilot") }
-        ]
+        options: agentSelectionOptions({ cwd })
       });
       options.agents = selected;
+      // Validate here, not at the end. The wizard used to ask about Ruler,
+      // skillshare, prompt sections and starter context first, then fail with
+      // a bare Error that the CLI could only report as an internal bug.
+      if (!options.agents.length) throw emptyAgentSelectionError({ command: "backendguard setup" });
       const rl2 = readline.createInterface({ input, output });
       try {
         options.syncRules = await askSetupYesNo(rl2, "Sync project rules and MCP servers through Ruler?", options.syncRules);
@@ -1019,7 +1037,7 @@ async function setup({ args = [], cwd = process.cwd() } = {}) {
   })) console.log(`│  ${line}`);
   console.log("");
 
-  if (!options.agents.length) throw new Error("No agents selected. Use --agents codex,claude,antigravity,copilot.");
+  if (!options.agents.length) throw emptyAgentSelectionError({ command: "backendguard setup" });
 
   if (options.generateProjectContext) {
     console.log("◇ Generating starter project context...");
@@ -1028,22 +1046,35 @@ async function setup({ args = [], cwd = process.cwd() } = {}) {
     console.log("");
   }
 
+  // One agent failing (its CLI missing, say) should not lose the agents that
+  // installed successfully — but if none installed, the setup did not happen.
+  const installedAgents = [];
   for (const agent of options.agents) {
     console.log(`◇ Setting up ${agent}...`);
-    await streamSetupOutput(() => install({ agent, copy: false }));
+    const ok = await runOptionalIntegration(`${agent} install`, agent, degraded, () =>
+      streamSetupOutput(() => install({ agent, copy: false })));
+    if (ok) installedAgents.push(agent);
   }
+  if (!installedAgents.length) {
+    throw new EnvironmentError("No agent could be set up.", {
+      hint: degraded.map((entry) => entry.message).join(" ")
+        || "Check that the agent CLI is installed, then re-run `backendguard setup`."
+    });
+  }
+  options.agents = installedAgents;
 
   if (options.syncRules) {
     console.log("◇ Syncing project rules and MCP servers...");
-    const syncAgents = options.agents.map((agent) => agent === "agy" ? "antigravity" : agent).join(",");
+    const syncAgents = options.agents.map(externalAgentName).join(",");
     const syncArgs = ["--rules", "--agents", syncAgents];
     if (options.yes) syncArgs.push("--yes");
-    await streamSetupOutput(() => syncRules({ cwd, rootDir, args: syncArgs }));
+    await runOptionalIntegration("Ruler rule/MCP sync", "ruler", degraded, () =>
+      streamSetupOutput(() => syncRules({ cwd, rootDir, args: syncArgs })));
   }
 
   if (options.syncSkills) {
     console.log("◇ Syncing skills...");
-    const skillAgents = options.agents.map((agent) => agent === "agy" ? "antigravity" : agent).join(",");
+    const skillAgents = options.agents.map(externalAgentName).join(",");
     const syncArgs = ["--skills", "--agents", skillAgents];
     if (options.yes) syncArgs.push("--yes");
 
@@ -1058,12 +1089,12 @@ async function setup({ args = [], cwd = process.cwd() } = {}) {
       })
     }));
 
-    await doSyncSkills();
+    const skillsSynced = await runOptionalIntegration("skillshare skill sync", "skillshare", degraded, doSyncSkills);
 
     // Fallback: if no skills were found, offer community library installer
-    const existing = detectExistingSkills({ cwd });
+    const existing = skillsSynced ? detectExistingSkills({ cwd }) : [];
     const totalExisting = existing.reduce((sum, e) => sum + e.count, 0);
-    if (totalExisting === 0) {
+    if (skillsSynced && totalExisting === 0) {
       console.log("");
       console.log("No skills found on this machine.");
       console.log("│  Install community skills to get started.");
@@ -1085,10 +1116,46 @@ async function setup({ args = [], cwd = process.cwd() } = {}) {
   }
 
   console.log("");
-  console.log("◇ BackendGuard is ready");
+  if (degraded.length) {
+    console.log("◇ BackendGuard is ready, with skipped steps");
+    for (const entry of degraded) {
+      console.log(`│  ${entry.step}: ${entry.message}`);
+      if (entry.hint) console.log(`│    ${entry.hint}`);
+    }
+    console.log("│  These are optional integrations — the agent setup above completed.");
+  } else {
+    console.log("◇ BackendGuard is ready");
+  }
   console.log("│  Next: restart/open your agent from this project directory.");
   console.log("│  Try: backendguard debug -- \"Recheck authen flow\"");
   console.log("");
+  return { agents: options.agents, degraded };
+}
+
+/**
+ * Runs one optional third-party integration step.
+ *
+ * Ruler and skillshare are optional: when one of them is missing, refuses to
+ * install, or fails, the agent setup that already succeeded is still valid.
+ * Before this, any failure in either step aborted the wizard — a skillshare
+ * crash ended a completed Ruler+agent install with
+ * "This is a bug in BackendGuard. Please report it."
+ *
+ * A genuine fault inside BackendGuard still propagates: only errors that are
+ * already classified as the environment's or the integration's are absorbed.
+ */
+async function runOptionalIntegration(step, integration, degraded, run) {
+  try {
+    await run();
+    return true;
+  } catch (error) {
+    if (!isExpectedError(error)) throw error;
+    degraded.push({ step, integration, message: error.message, hint: error.hint });
+    console.log(`│  Skipped: ${error.message}`);
+    if (error.hint) console.log(`│  ${error.hint}`);
+    console.log("");
+    return false;
+  }
 }
 
 const args = process.argv.slice(2);
@@ -1101,13 +1168,18 @@ const requestedCommand = args[0];
 const canonicalCommand = resolveCommandName(requestedCommand);
 const command = INTERNAL_NAMES[canonicalCommand] || canonicalCommand;
 
+/**
+ * `backendguard install claude`, `--agent claude` and `--agents claude,codex`
+ * are all documented; only the two flag forms were implemented, so the
+ * positional form fell through to the interactive prompt and — with nothing
+ * preselected and no TTY — installed nothing and exited 0.
+ *
+ * Returns null only when the user named no agent, which is the one case that
+ * should open the prompt.
+ */
 function installAgentsFromArgs(args) {
-  const agentFlag = Math.max(args.indexOf("--agent"), args.indexOf("--agents"));
-  if (agentFlag >= 0) {
-    const value = args[agentFlag + 1] || "";
-    return parseAgentList(value).map(normalizeInstallAgent).filter(Boolean);
-  }
-  return null; // no flag → interactive selection
+  const parsed = parseInstallAgents(args, { knownFlags: ["--agent", "--agents"] });
+  return parsed ? parsed.agents : null;
 }
 
 const notifyUpdate = checkForUpdate({ currentVersion: packageVersion(), dataDir: dataRoot() });
@@ -1136,37 +1208,30 @@ try {
     });
   } else if (command === "install") {
     const copy = args.includes("--copy");
+    // Parsing validates every agent name, so an unknown agent is rejected
+    // before the first file is copied rather than half-way through the install.
     const explicitAgents = installAgentsFromArgs(args);
+    const interactive = explicitAgents === null;
 
-    if (explicitAgents && explicitAgents.length) {
-      // Direct mode: backendguard install --agents antigravity,codex
-      for (const agent of explicitAgents) {
-        console.log(`◇ Installing ${agent}...`);
-        await streamSetupOutput(() => install({ copy, agent }));
-        console.log("");
-      }
-    } else if (explicitAgents && !explicitAgents.length) {
-      console.log("No valid agents specified. Use --agents codex,claude,antigravity,copilot.");
-    } else {
-      // Interactive mode: backendguard install
-      const selected = await multiSelect({
-        message: "Select agents to install:",
-        options: SUPPORTED_AGENTS
-      });
-      if (!selected.length) {
-        console.log("No agents selected. Nothing to install.");
-      } else {
-        for (const agent of selected) {
-          console.log(`◇ Installing ${agent}...`);
-          await streamSetupOutput(() => install({ copy, agent }));
-          console.log("");
-        }
-        // Recommend community skills based on selected agents
-        try {
-          const libraryResults = await fetchSkillsForAgents(selected, { dataDir: dataRoot() });
-          printSkillRecommendations(libraryResults);
-        } catch { /* skill library is best-effort */ }
-      }
+    const agents = explicitAgents ?? await multiSelect({
+      message: "Select agents to install:",
+      options: agentSelectionOptions()
+    });
+
+    if (!agents.length) throw emptyAgentSelectionError();
+
+    for (const agent of agents) {
+      console.log(`◇ Installing ${agent}...`);
+      await streamSetupOutput(() => install({ copy, agent }));
+      console.log("");
+    }
+
+    if (interactive) {
+      // Recommend community skills based on the selected agents.
+      try {
+        const libraryResults = await fetchSkillsForAgents(agents, { dataDir: dataRoot() });
+        printSkillRecommendations(libraryResults);
+      } catch { /* skill library is best-effort */ }
     }
   } else if (command === "setup") {
     await setup({ args: args.slice(1), cwd: process.cwd() });

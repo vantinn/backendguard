@@ -103,13 +103,29 @@ export const COMMANDS = [
     name: "install",
     group: "Setup",
     summary: "Install BackendGuard into one or more AI coding agents.",
-    usage: ["backendguard install", "backendguard install --agent <name>"],
+    usage: [
+      "backendguard install",
+      "backendguard install <agent>",
+      "backendguard install --agent <name>",
+      "backendguard install --agents <names>"
+    ],
     options: [
-      ["--agent <name>", "codex | claude | antigravity | copilot. One agent per invocation."],
+      ["<agent>", "codex | claude | agy | antigravity | copilot. Same as --agent."],
+      ["--agent <name>", "codex | claude | agy | antigravity | copilot. One agent per invocation."],
       ["--agents <names>", "Comma-separated list of agents."],
       ["--copy", "Copy a self-contained package under $CODEX_HOME without touching hook/MCP config."]
     ],
-    examples: ["backendguard install", "backendguard install --agent claude"]
+    examples: [
+      "backendguard install",
+      "backendguard install claude",
+      "backendguard install --agent claude",
+      "backendguard install --agents codex,claude"
+    ],
+    exitCodes: [
+      [0, "the requested agents were installed"],
+      [2, "no agent selected, or an unknown agent name"],
+      [3, "a required external CLI is missing"]
+    ]
   },
   {
     name: "setup",
@@ -117,8 +133,8 @@ export const COMMANDS = [
     summary: "Interactive full setup wizard.",
     usage: ["backendguard setup"],
     options: [
-      ["--yes", "Auto-confirm all prompts."],
-      ["--agents <names>", "Pre-select agents to install."],
+      ["--yes, -y", "Auto-confirm all prompts. Installs Codex unless --agents is given."],
+      ["--agents <names>", "Agents to install, comma separated. Skips the agent prompt."],
       ["--generate-project-context", "Generate starter project skills and workflow."],
       ["--no-rules", "Skip AGENTS.md rule sync."],
       ["--no-skills", "Skip skill sync."],
@@ -136,6 +152,8 @@ export const COMMANDS = [
       ["--workflows", "Sync workflows across agents."],
       ["--agents <names>", "Restrict the sync to specific agents."],
       ["--dry-run", "Preview without writing."],
+      ["--yes, -y", "Auto-confirm prompts, including installing a missing ruler/skillshare."],
+      ["--force", "With --rules, re-apply Ruler even when the config looks current."],
       ["--no-import-codex-mcp", "With --rules, skip importing Codex MCP servers."],
       ["--no-collect", "With --skills, skip collecting new skills."],
       ["--no-embeddings", "With --skills, skip embedding generation."],
