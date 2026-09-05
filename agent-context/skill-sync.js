@@ -5,7 +5,7 @@ import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { execSync } from "node:child_process";
 import { runProcess } from "../runtime/process-runner.js";
-import { shellInvocation } from "../runtime/shell-runner.js";
+import { shellInvocation, spawnStreaming } from "../runtime/shell-runner.js";
 import { EnvironmentError, UsageError } from "../runtime/errors.js";
 
 const DEFAULT_AGENTS = ["codex", "claude", "antigravity", "copilot"];
@@ -172,40 +172,18 @@ export async function installSkillshare({
 }
 
 /**
- * Spawn a child process and stream its stdout/stderr line-by-line in real time
- * via console.log (which will be intercepted by streamSetupOutput for │ prefix).
- * stdin is closed immediately to prevent deadlocks.
+ * Stream a skillshare installer's output while it runs.
+ *
+ * Delegates to the shared `spawnStreaming` helper: this function used to call
+ * `spawn` directly without importing it, so `backendguard sync --skills` and
+ * the setup wizard's skill step both died with
+ * `ReferenceError: spawn is not defined` before the installer started — which
+ * the CLI then reported as an internal BackendGuard bug.
  */
 function spawnShellStreaming(command, args = []) {
-  return new Promise((resolve, reject) => {
-    const child = spawn(command, args, {
-      stdio: ["ignore", "pipe", "pipe"],
-      shell: false
-    });
-
-    const streamLines = (stream) => {
-      let buffer = "";
-      stream.on("data", (chunk) => {
-        buffer += chunk.toString();
-        const lines = buffer.split(/\r?\n/);
-        buffer = lines.pop() || "";
-        for (const line of lines) {
-          if (line.trim()) console.log(line);
-        }
-      });
-      stream.on("end", () => {
-        if (buffer.trim()) console.log(buffer.trim());
-      });
-    };
-
-    if (child.stdout) streamLines(child.stdout);
-    if (child.stderr) streamLines(child.stderr);
-
-    child.on("close", (code) => {
-      if (code === 0) resolve();
-      else reject(new Error(`${command} exited with code ${code}`));
-    });
-    child.on("error", reject);
+  return spawnStreaming(command, args, {
+    label: "The skillshare installer",
+    integration: "skillshare"
   });
 }
 

@@ -1,5 +1,7 @@
 import { execFileSync, spawn } from "node:child_process";
 
+import { EnvironmentError } from "./errors.js";
+
 /**
  * Safe child-process execution.
  *
@@ -95,13 +97,49 @@ export function runProcess(command, args = [], {
     // individually — never by building one concatenated command line from
     // untrusted input.
     if (platform === "win32" && isMissingExecutable(error) && !hasShimExtension(command)) {
-      const invocation = windowsShellInvocation(command, args, env);
-      const stdout = exec(invocation.file, invocation.args, options);
-      return { stdout: stdout || "" };
+      try {
+        const invocation = windowsShellInvocation(command, args, env);
+        const stdout = exec(invocation.file, invocation.args, options);
+        return { stdout: stdout || "" };
+      } catch (retryError) {
+        throw classifyExecError(retryError, command);
+      }
     }
-    throw error;
+    throw classifyExecError(error, command);
   }
 }
+
+/**
+ * A missing or unrunnable external CLI is a fact about this machine, not a
+ * defect in BackendGuard. Left unclassified, `spawnSync skillshare ENOENT`
+ * reached the CLI as an unknown error and printed "This is a bug in
+ * BackendGuard. Please report it."
+ *
+ * Callers that probe for a tool (`checkSkillshareInstalled`) catch everything,
+ * so they are unaffected by the change of type.
+ */
+export function classifyExecError(error, command) {
+  if (error?.code === "ENOENT") {
+    return new EnvironmentError(`Required command not found: ${command}`, {
+      hint: INSTALL_HINTS[command] || `Install ${command} and make sure it is on PATH, then re-run.`
+    });
+  }
+  if (error?.code === "EACCES" || error?.code === "EPERM") {
+    return new EnvironmentError(`Cannot execute ${command}: permission denied.`, {
+      hint: `Check that ${command} is executable by the current user.`
+    });
+  }
+  return error;
+}
+
+/** Install instructions for the third-party CLIs BackendGuard drives. */
+const INSTALL_HINTS = {
+  ruler: "Install it with `npm install -g @intellectronica/ruler`, or re-run with --yes to install it automatically.",
+  skillshare: "Install it from https://github.com/runkids/skillshare, or re-run with --yes to install it automatically.",
+  codex: "Install the Codex CLI and sign in, or install a different agent: backendguard install claude.",
+  npx: "Install Node.js 20 or newer, which provides npx.",
+  git: "Install git and make sure it is on PATH."
+};
 
 /** Same contract as runProcess, but returns a promise and streams nothing. */
 export function spawnProcess(command, args = [], {

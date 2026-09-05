@@ -39,10 +39,38 @@ describe("process runner", () => {
 
   it("surfaces a missing executable rather than falling back to a shell on POSIX", () => {
     const missing = Object.assign(new Error("spawn ENOENT"), { code: "ENOENT" });
+    const attempts = [];
+
+    // The command must be reported as an environment problem — a missing CLI is
+    // a fact about the machine, and used to reach the user as "This is a bug in
+    // BackendGuard" — and there must be exactly one attempt: no shell fallback.
     expect(() => runProcess("nope", ["x"], {
       platform: "linux",
-      exec: () => { throw missing; }
-    })).toThrow(/ENOENT/);
+      exec: (file) => { attempts.push(file); throw missing; }
+    })).toThrow(/Required command not found: nope/);
+    expect(attempts).toEqual(["nope"]);
+  });
+
+  it("classifies a missing or unrunnable executable as an environment error", () => {
+    for (const [code, pattern] of [["ENOENT", /not found/], ["EACCES", /permission denied/]]) {
+      const failure = Object.assign(new Error(code), { code });
+      let thrown;
+      try {
+        runProcess("ruler", [], { platform: "linux", exec: () => { throw failure; } });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown.name, code).toBe("EnvironmentError");
+      expect(thrown.exitCode, code).toBe(3);
+      expect(thrown.message, code).toMatch(pattern);
+      expect(thrown.hint, code).toBeTruthy();
+    }
+  });
+
+  it("passes an unrelated failure through unchanged", () => {
+    const failure = Object.assign(new Error("exited with 2"), { status: 2 });
+    expect(() => runProcess("ruler", [], { platform: "linux", exec: () => { throw failure; } }))
+      .toThrow(failure);
   });
 
   it("retries a missing Windows executable through cmd.exe with quoted arguments", () => {
