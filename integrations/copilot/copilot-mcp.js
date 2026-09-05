@@ -1,21 +1,19 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { readJsonConfig } from "../../runtime/fs-utils.js";
+
 /**
  * Copilot MCP configuration lives at .vscode/mcp.json (workspace-level).
  * This is the standard location for VS Code / GitHub Copilot agent mode.
  */
 
+/**
+ * Delegates to the shared reader, which refuses to overwrite a config it
+ * cannot parse rather than replacing the user's file with defaults.
+ */
 function readJsonFile(filePath, fallback) {
-  if (!fs.existsSync(filePath)) return fallback;
-  const raw = fs.readFileSync(filePath, "utf8").trim();
-  if (!raw) return fallback;
-  try {
-    return JSON.parse(raw);
-  } catch {
-    console.warn(`[backendguard] warning: corrupt JSON in ${filePath}, overwriting with defaults`);
-    return fallback;
-  }
+  return readJsonConfig(filePath, fallback);
 }
 
 export function copilotMcpConfigPath(cwd = process.cwd()) {

@@ -1,6 +1,8 @@
 import fs from "node:fs";
 import path from "node:path";
 
+import { readJsonConfig } from "../../runtime/fs-utils.js";
+
 // Entries this installer previously wrote are recognised so a re-install
 // replaces them instead of appending a duplicate. The pre-0.9.0 path
 // (which lived under a differently named plugin directory) is matched too, so
@@ -25,17 +27,11 @@ function shellQuote(value) {
 }
 
 function readHooksFile(hooksPath) {
-  if (!fs.existsSync(hooksPath)) return { hooks: {} };
-  const raw = fs.readFileSync(hooksPath, "utf8").trim();
-  if (!raw) return { hooks: {} };
-  try {
-    const parsed = JSON.parse(raw);
-    if (!parsed.hooks || typeof parsed.hooks !== "object") parsed.hooks = {};
-    return parsed;
-  } catch {
-    console.warn(`[backendguard] warning: corrupt JSON in ${hooksPath}, overwriting with defaults`);
-    return { hooks: {} };
-  }
+  // A hooks file that does not parse is left alone rather than replaced with
+  // defaults: it is the user's, and it may hold hooks BackendGuard did not add.
+  const parsed = readJsonConfig(hooksPath, { hooks: {} });
+  if (!parsed.hooks || typeof parsed.hooks !== "object") parsed.hooks = {};
+  return parsed;
 }
 
 function isBackendGuardHookEntry(entry) {

@@ -42,10 +42,54 @@ export class EnvironmentError extends Error {
   }
 }
 
+/**
+ * True for every error that describes something outside BackendGuard's control:
+ * a mistaken invocation, an unprepared environment, a malformed user config, a
+ * third-party integration that failed. These print as a message and a hint.
+ * Everything else is a genuine fault in BackendGuard and prints as such.
+ */
 export function isExpectedError(error) {
-  return error instanceof UsageError || error instanceof EnvironmentError;
+  return error instanceof UsageError
+    || error instanceof EnvironmentError
+    || error instanceof ConfigurationError
+    || error instanceof IntegrationError;
 }
 
 export function exitCodeFor(error) {
   return typeof error?.exitCode === "number" ? error.exitCode : EXIT.INTERNAL;
+}
+
+/**
+ * A user-supplied configuration file is present but unusable (malformed JSON,
+ * an unparseable TOML table, a value of the wrong shape). The file belongs to
+ * the user, so this is their problem to fix, not a fault in BackendGuard.
+ */
+export class ConfigurationError extends Error {
+  constructor(message, { hint, path: filePath } = {}) {
+    super(message);
+    this.name = "ConfigurationError";
+    this.exitCode = EXIT.USAGE;
+    this.hint = hint;
+    this.path = filePath;
+  }
+}
+
+/**
+ * An optional third-party integration (Ruler, skillshare, an agent CLI) failed.
+ *
+ * The distinction from `EnvironmentError` is *whose* failure it is: an
+ * environment error means BackendGuard cannot run here, an integration error
+ * means one external tool BackendGuard drives did not do its job. The rest of
+ * a setup run is still valid, so callers are expected to report these and
+ * continue rather than abort.
+ */
+export class IntegrationError extends Error {
+  constructor(message, { hint, integration, cause } = {}) {
+    super(message);
+    this.name = "IntegrationError";
+    this.exitCode = EXIT.ENVIRONMENT;
+    this.hint = hint;
+    this.integration = integration;
+    if (cause !== undefined) this.cause = cause;
+  }
 }

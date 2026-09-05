@@ -32,7 +32,9 @@ export function runPassthrough({
   env = process.env
 } = {}) {
   if (!SUPPORTED_COMMANDS.has(command)) {
-    throw new Error(`Unsupported passthrough command: ${command || ""}`);
+    throw new UsageError(`Unsupported passthrough command: ${command || "(none)"}`, {
+      hint: `Supported passthrough commands: ${[...SUPPORTED_COMMANDS].join(", ")}.`
+    });
   }
 
   // `shell: false`: the arguments after `--` come straight from the user's

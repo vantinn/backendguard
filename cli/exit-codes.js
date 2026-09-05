@@ -1,10 +1,18 @@
-import { EXIT, EnvironmentError, UsageError, exitCodeFor, isExpectedError } from "../runtime/errors.js";
+import {
+  EXIT,
+  ConfigurationError,
+  EnvironmentError,
+  IntegrationError,
+  UsageError,
+  exitCodeFor,
+  isExpectedError
+} from "../runtime/errors.js";
 
 /**
  * CLI-side error presentation. The types themselves live in `runtime/errors.js`
  * so modules below the CLI can raise them without importing the CLI.
  */
-export { EXIT, EnvironmentError, UsageError, exitCodeFor };
+export { EXIT, ConfigurationError, EnvironmentError, IntegrationError, UsageError, exitCodeFor };
 
 /**
  * Renders an error for the terminal.

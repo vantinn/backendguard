@@ -2,11 +2,14 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 
+import { readJsonConfig } from "../../runtime/fs-utils.js";
+
+/**
+ * Delegates to the shared reader, which refuses to overwrite a config it
+ * cannot parse rather than replacing the user's file with defaults.
+ */
 function readJsonFile(filePath, fallback) {
-  if (!fs.existsSync(filePath)) return fallback;
-  const raw = fs.readFileSync(filePath, "utf8").trim();
-  if (!raw) return fallback;
-  return JSON.parse(raw);
+  return readJsonConfig(filePath, fallback);
 }
 
 export function claudeConfigPath() {
