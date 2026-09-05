@@ -223,10 +223,43 @@ export function expandFileRetrievalTask(task) {
   return `${task}\n\nRelated backend terms: ${[...additions].join(", ")}`;
 }
 
+/**
+ * The longest token still worth testing as a path. PATH_MAX is 4096 on Linux
+ * and 1024 on macOS; anything longer is not a filename, and letting it reach
+ * the matcher is what made a pasted blob expensive.
+ */
+const MAX_PATH_TOKEN_LENGTH = 4096;
+
+const PATH_SEGMENT = /[A-Za-z0-9_.()[\]@~:,-]+(?:\/[A-Za-z0-9_.()[\]@~:,-]+)+/g;
+
+/**
+ * Path-like tokens mentioned in the prompt.
+ *
+ * The matcher is applied per whitespace-delimited token rather than to the
+ * whole prompt. `PATH_SEGMENT` is `X+(?:/X+)+`, and on a long run of `X` that
+ * contains no `/` — a base64 blob, a minified line, a pasted stack trace — the
+ * engine backtracks over every split point. That is quadratic: a 200KB prompt
+ * took ~32s, and this runs on *every* message the user sends to their agent.
+ *
+ * Splitting first is exact, not an approximation: the character class excludes
+ * whitespace, so no match could ever have spanned a space. Tokens without a
+ * `/` cannot match at all, and tokens longer than a path are not paths.
+ */
+function promptPathTokens(normalizedTask) {
+  const matches = [];
+  for (const token of normalizedTask.split(/\s+/)) {
+    if (!token || token.length > MAX_PATH_TOKEN_LENGTH || !token.includes("/")) continue;
+    PATH_SEGMENT.lastIndex = 0;
+    const found = token.match(PATH_SEGMENT);
+    if (found) matches.push(...found);
+  }
+  return matches;
+}
+
 export function findExplicitPromptFiles({ cwd = process.cwd(), task = "", limit = 6 } = {}) {
   const candidates = new Set();
   const normalizedTask = String(task || "").replace(/\/\s+/g, "/");
-  const matches = normalizedTask.match(/[A-Za-z0-9_.()[\]@~:,-]+(?:\/[A-Za-z0-9_.()[\]@~:,-]+)+/g) || [];
+  const matches = promptPathTokens(normalizedTask);
   for (const match of matches) {
     const cleaned = cleanPromptFilePath(match);
     for (const filePath of resolvePromptPathCandidates({ cwd, promptPath: cleaned })) {
