@@ -12,6 +12,13 @@
  *   });
  */
 
+/**
+ * Exit code for a user-initiated cancellation. 128 + SIGINT, the shell
+ * convention. Ctrl+C used to call `process.exit(0)`, so a cancelled setup
+ * reported success and any script wrapping it carried on.
+ */
+export const CANCELLED_EXIT_CODE = 130;
+
 const KEYS = {
   UP: ["\x1B[A", "\x1Bk"],       // Arrow Up, Alt+k
   DOWN: ["\x1B[B", "\x1Bj"],     // Arrow Down, Alt+j
@@ -42,8 +49,10 @@ function matchKey(data, keySet) {
 export function multiSelect({ message, options }) {
   return new Promise((resolve, reject) => {
     if (!process.stdin.isTTY) {
-      // Non-interactive: return all pre-selected
-      resolve(options.filter((o) => o.selected).map((o) => o.value));
+      // Non-interactive: return the pre-selected options. Same rule as the
+      // interactive path below — "selected unless explicitly false" — which
+      // the two branches used to disagree on.
+      resolve(options.filter((o) => o.selected !== false).map((o) => o.value));
       return;
     }
 
@@ -54,7 +63,11 @@ export function multiSelect({ message, options }) {
       // Move cursor up to overwrite previous render (except first time)
       const lines = [];
       lines.push(`${CYAN}◇${RESET} ${message}`);
-      lines.push(`${DIM}  Use ↑/↓ to navigate, Space to toggle, Enter to confirm${RESET}`);
+      const chosen = selections.filter(Boolean).length;
+      lines.push(`${DIM}  ↑/↓ move · Space toggles the highlighted item · Enter confirms${RESET}`);
+      lines.push(chosen
+        ? `${DIM}  ${GREEN}◉${RESET}${DIM} = selected, ○ = not selected — ${chosen} selected${RESET}`
+        : `${DIM}  ${GREEN}◉${RESET}${DIM} = selected, ○ = not selected — ${RESET}nothing selected yet`);
       for (let i = 0; i < options.length; i++) {
         const isCursor = i === cursor;
         const isSelected = selections[i];
@@ -103,7 +116,8 @@ export function multiSelect({ message, options }) {
     function onData(data) {
       if (matchKey(data, KEYS.CTRL_C)) {
         cleanup();
-        process.exit(0);
+        process.stdout.write("\nCancelled.\n");
+        process.exit(CANCELLED_EXIT_CODE);
       }
 
       if (matchKey(data, KEYS.UP) || matchKey(data, KEYS.K)) {
@@ -220,7 +234,8 @@ export function singleSelect({ message, options }) {
     function onData(data) {
       if (matchKey(data, KEYS.CTRL_C)) {
         cleanup();
-        process.exit(0);
+        process.stdout.write("\nCancelled.\n");
+        process.exit(CANCELLED_EXIT_CODE);
       }
 
       if (matchKey(data, KEYS.UP) || matchKey(data, KEYS.K)) {

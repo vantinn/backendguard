@@ -1,5 +1,15 @@
-// Interactive setup starts empty so users choose intentionally. Non-interactive
-// --yes needs a deterministic target, so it defaults to Codex.
+import { parseAgents, resolveAgent } from "./agents.js";
+
+/**
+ * Interactive setup used to start with nothing selected, so pressing Enter at
+ * the agent prompt produced an empty selection — and the wizard only noticed
+ * after asking every remaining question. The interactive default now comes
+ * from `agentSelectionOptions()`, which preselects the agents this machine
+ * actually has; this list stays empty only as the "user has not chosen yet"
+ * marker that the prompt fills in.
+ *
+ * Non-interactive `--yes` needs a deterministic target, so it defaults to Codex.
+ */
 const DEFAULT_AGENTS = [];
 const DEFAULT_YES_AGENTS = ["codex"];
 
@@ -7,8 +17,10 @@ export function parseSetupArgs(args = []) {
   const agentsFlag = args.indexOf("--agents");
   const agentsProvided = agentsFlag >= 0;
   const yes = args.includes("--yes") || args.includes("-y");
+  // `--agents ""` and `--agents bogus` used to yield an empty list that only
+  // failed at the very end of the wizard, as an "internal bug". Validate here.
   const agents = agentsFlag >= 0
-    ? parseAgentList(args[agentsFlag + 1])
+    ? parseAgents(args[agentsFlag + 1], { flag: "--agents" })
     : yes
       ? DEFAULT_YES_AGENTS
       : DEFAULT_AGENTS;
@@ -24,6 +36,11 @@ export function parseSetupArgs(args = []) {
   };
 }
 
+/**
+ * Lenient parse, kept for callers that build a list from already-trusted input.
+ * Use `parseAgents` from `runtime/agents.js` for anything a user typed: it
+ * rejects unknown names instead of dropping them.
+ */
 export function parseAgentList(value = "") {
   const agents = String(value || "")
     .split(",")
@@ -34,8 +51,7 @@ export function parseAgentList(value = "") {
 
 export function normalizeSetupAgent(agent) {
   const normalized = String(agent || "").trim().toLowerCase();
-  if (normalized === "antigravity") return "agy";
-  return normalized;
+  return resolveAgent(normalized) || normalized;
 }
 
 export function setupSummaryLines({
