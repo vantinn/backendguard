@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -23,6 +22,7 @@ import { EXIT, IntegrationError, UsageError, isExpectedError } from "../runtime/
 import { formatCliError } from "../cli/exit-codes.js";
 import { findCommand } from "../cli/command-registry.js";
 import { rejectUnknownFlags } from "../cli/options.js";
+import { runCli as runCliProcess } from "./helpers/run-cli.js";
 
 /**
  * Regressions for the bugs real users hit on 0.9.1.
@@ -53,33 +53,8 @@ function makeProject(files = { "package.json": '{"name":"fixture","version":"1.0
  * Runs the CLI with a throwaway HOME so an install cannot touch the developer's
  * real agent configuration.
  */
-function runCli(args, { cwd = repoRoot, home = makeProject({}), env = {} } = {}) {
-  try {
-    const stdout = execFileSync(process.execPath, [CLI, ...args], {
-      cwd,
-      encoding: "utf8",
-      stdio: ["ignore", "pipe", "pipe"],
-      env: {
-        ...process.env,
-        HOME: home,
-        USERPROFILE: home,
-        BACKENDGUARD_HOME: path.join(home, ".ctx"),
-        CODEX_HOME: path.join(home, ".codex"),
-        CLAUDE_HOME: path.join(home, ".claude"),
-        CLAUDE_CONFIG_PATH: path.join(home, ".claude.json"),
-        BACKENDGUARD_SKIP_UPDATE_CHECK: "1",
-        ...env
-      }
-    });
-    return { status: 0, stdout, stderr: "" };
-  } catch (error) {
-    return {
-      status: typeof error.status === "number" ? error.status : -1,
-      stdout: error.stdout || "",
-      stderr: error.stderr || ""
-    };
-  }
-}
+const runCli = (args, { cwd = repoRoot, home = makeProject({}), env = {} } = {}) =>
+  runCliProcess(args, { cwd, home, env });
 
 const INTERNAL_BUG_MARKER = "This is a bug in BackendGuard";
 
@@ -88,7 +63,7 @@ afterAll(() => {
 });
 
 describe("BUG-001: the agent prompt has a sensible default selection", () => {
-  it("preselects the agents this machine already has", () => {
+  it("preselects the agents this machine already has", async () => {
     const home = "/home/dev";
     const exists = (target) => target === path.join(home, ".claude");
     const options = agentSelectionOptions({ home, cwd: "/repo", exists });
@@ -98,7 +73,7 @@ describe("BUG-001: the agent prompt has a sensible default selection", () => {
     expect(options.find((option) => option.value === "claude").hint).toBe("detected on this machine");
   });
 
-  it("falls back to codex when no agent can be detected, so Enter never installs nothing", () => {
+  it("falls back to codex when no agent can be detected, so Enter never installs nothing", async () => {
     const options = agentSelectionOptions({ home: "/home/dev", cwd: "/repo", exists: () => false });
     const selected = options.filter((option) => option.selected).map((option) => option.value);
 
@@ -106,25 +81,25 @@ describe("BUG-001: the agent prompt has a sensible default selection", () => {
     expect(selected.length).toBeGreaterThan(0);
   });
 
-  it("gives every option an explicit boolean, which the two prompt branches read differently", () => {
+  it("gives every option an explicit boolean, which the two prompt branches read differently", async () => {
     for (const option of agentSelectionOptions({ home: "/h", cwd: "/c", exists: () => false })) {
       expect(typeof option.selected, option.value).toBe("boolean");
     }
   });
 
-  it("detects an agent from the project directory as well as from home", () => {
+  it("detects an agent from the project directory as well as from home", async () => {
     const exists = (target) => target === path.join("/repo", ".codex");
     expect(detectInstalledAgents({ home: "/home/dev", cwd: "/repo", exists })).toEqual(["codex"]);
   });
 
-  it("offers every supported agent, whatever is detected", () => {
+  it("offers every supported agent, whatever is detected", async () => {
     const options = agentSelectionOptions({ home: "/h", cwd: "/c", exists: () => false });
     expect(options.map((option) => option.value)).toEqual(AGENTS.map((agent) => agent.value));
   });
 });
 
 describe("BUG-002: an empty agent selection stops immediately", () => {
-  it("is a usage error carrying exit code 2, not a bare Error", () => {
+  it("is a usage error carrying exit code 2, not a bare Error", async () => {
     const error = emptyAgentSelectionError();
     expect(error).toBeInstanceOf(UsageError);
     expect(error.exitCode).toBe(EXIT.USAGE);
@@ -135,8 +110,8 @@ describe("BUG-002: an empty agent selection stops immediately", () => {
     expect(() => parseSetupArgs(["--agents", ""])).toThrow(UsageError);
   });
 
-  it("fails a non-interactive `setup` without reaching the ready-to-setup summary", () => {
-    const result = runCli(["setup", "--agents", ""], { cwd: makeProject() });
+  it("fails a non-interactive `setup` without reaching the ready-to-setup summary", async () => {
+    const result = await runCli(["setup", "--agents", ""], { cwd: makeProject() });
 
     expect(result.status).toBe(EXIT.USAGE);
     expect(result.stderr).not.toContain(INTERNAL_BUG_MARKER);
@@ -144,10 +119,10 @@ describe("BUG-002: an empty agent selection stops immediately", () => {
     expect(result.stdout).not.toContain("Ready to setup");
   });
 
-  it("does not create configuration for a run that selected no agent", () => {
+  it("does not create configuration for a run that selected no agent", async () => {
     const cwd = makeProject();
     const home = makeProject({});
-    runCli(["setup", "--agents", ""], { cwd, home });
+    await runCli(["setup", "--agents", ""], { cwd, home });
 
     expect(fs.existsSync(path.join(home, ".claude.json"))).toBe(false);
     expect(fs.existsSync(path.join(cwd, ".ruler"))).toBe(false);
@@ -171,8 +146,8 @@ describe("BUG-003: user and environment problems are never reported as internal 
   ];
 
   for (const { name, args, exit } of cases) {
-    it(`${name} exits ${exit} and does not blame BackendGuard`, () => {
-      const result = runCli(args, { cwd: makeProject() });
+    it(`${name} exits ${exit} and does not blame BackendGuard`, async () => {
+      const result = await runCli(args, { cwd: makeProject() });
       const output = `${result.stdout}${result.stderr}`;
 
       expect(output, name).not.toContain(INTERNAL_BUG_MARKER);
@@ -181,14 +156,14 @@ describe("BUG-003: user and environment problems are never reported as internal 
     });
   }
 
-  it("prints a hint rather than a stack trace for an expected error", () => {
+  it("prints a hint rather than a stack trace for an expected error", async () => {
     const rendered = formatCliError(new UsageError("bad thing", { hint: "do this instead" }));
     expect(rendered).toContain("bad thing");
     expect(rendered).toContain("do this instead");
     expect(rendered).not.toContain(INTERNAL_BUG_MARKER);
   });
 
-  it("still reports a genuine internal fault as a bug", () => {
+  it("still reports a genuine internal fault as a bug", async () => {
     const rendered = formatCliError(new TypeError("x is not a function"));
     expect(rendered).toContain(INTERNAL_BUG_MARKER);
     expect(isExpectedError(new TypeError("boom"))).toBe(false);
@@ -196,33 +171,33 @@ describe("BUG-003: user and environment problems are never reported as internal 
 });
 
 describe("BUG-004: `backendguard install claude` uses the positional agent", () => {
-  it("parses the positional form README documents", () => {
+  it("parses the positional form README documents", async () => {
     expect(parseInstallAgents(["install", "claude"])).toEqual({ agents: ["claude"], source: "positional" });
   });
 
-  it("still parses both flag forms", () => {
+  it("still parses both flag forms", async () => {
     expect(parseInstallAgents(["install", "--agent", "claude"]))
       .toEqual({ agents: ["claude"], source: "--agent" });
     expect(parseInstallAgents(["install", "--agents", "codex,claude"]))
       .toEqual({ agents: ["codex", "claude"], source: "--agents" });
   });
 
-  it("normalizes antigravity to its internal name and back", () => {
+  it("normalizes antigravity to its internal name and back", async () => {
     expect(parseInstallAgents(["install", "antigravity"]).agents).toEqual(["agy"]);
     expect(externalAgentName("agy")).toBe("antigravity");
   });
 
-  it("returns null only when no agent was named, so the prompt is the last resort", () => {
+  it("returns null only when no agent was named, so the prompt is the last resort", async () => {
     expect(parseInstallAgents(["install"])).toBeNull();
     expect(parseInstallAgents(["install", "--copy"])).toBeNull();
   });
 
-  it("does not mistake a flag's value for a positional agent", () => {
+  it("does not mistake a flag's value for a positional agent", async () => {
     expect(parseInstallAgents(["install", "--agent", "claude"], { knownFlags: ["--agent", "--agents"] }))
       .toEqual({ agents: ["claude"], source: "--agent" });
   });
 
-  it("rejects two positional agents with an actionable message", () => {
+  it("rejects two positional agents with an actionable message", async () => {
     expect(() => parseInstallAgents(["install", "codex", "claude"]))
       .toThrow(/takes one agent name/);
     try {
@@ -232,25 +207,25 @@ describe("BUG-004: `backendguard install claude` uses the positional agent", () 
     }
   });
 
-  it("does not open an interactive prompt for an explicit agent", () => {
+  it("does not open an interactive prompt for an explicit agent", async () => {
     // stdin is /dev/null here, so a prompt would return the preselected set
     // and print the select header. Neither may appear.
-    const result = runCli(["install", "claude"], { cwd: makeProject() });
+    const result = await runCli(["install", "claude"], { cwd: makeProject() });
     expect(result.stdout).not.toContain("Select agents to install");
     expect(result.stdout).toContain("Installing claude");
     expect(result.status).toBe(EXIT.OK);
   }, 180_000);
 
-  it("never exits 0 after installing nothing", () => {
+  it("never exits 0 after installing nothing", async () => {
     for (const args of [["install", "bogus"], ["install", "--agents", ""]]) {
-      const result = runCli(args, { cwd: makeProject() });
+      const result = await runCli(args, { cwd: makeProject() });
       expect(result.status, args.join(" ")).not.toBe(EXIT.OK);
     }
   });
 
-  it("rejects an unknown agent before writing anything", () => {
+  it("rejects an unknown agent before writing anything", async () => {
     const home = makeProject({});
-    const result = runCli(["install", "bogus"], { cwd: makeProject(), home });
+    const result = await runCli(["install", "bogus"], { cwd: makeProject(), home });
 
     expect(result.status).toBe(EXIT.USAGE);
     // 0.9.1 printed "◇ Installing bogus..." and copied the package first.
@@ -349,7 +324,7 @@ describe("BUG-005: the skillshare installer no longer dies with `spawn is not de
     })).rejects.toMatchObject({ name: "IntegrationError" });
   }, 20_000);
 
-  it("every expected error type stays out of the internal-bug bucket", () => {
+  it("every expected error type stays out of the internal-bug bucket", async () => {
     for (const name of ["EnvironmentError", "IntegrationError", "UsageError", "ConfigurationError"]) {
       const error = new Error("x");
       error.name = name;
@@ -401,12 +376,12 @@ describe("CLI contract: documented flags are accepted", () => {
     });
   }
 
-  it("still rejects a flag no command declares", () => {
+  it("still rejects a flag no command declares", async () => {
     expect(() => rejectUnknownFlags(["sync", "--nope"], findCommand("sync"))).toThrow(UsageError);
   });
 
-  it("documents the positional agent form in `install --help`", () => {
-    const result = runCli(["install", "--help"]);
+  it("documents the positional agent form in `install --help`", async () => {
+    const result = await runCli(["install", "--help"]);
     expect(result.status).toBe(EXIT.OK);
     expect(result.stdout).toContain("backendguard install <agent>");
     expect(result.stdout).toContain("backendguard install claude");
@@ -414,7 +389,7 @@ describe("CLI contract: documented flags are accepted", () => {
 });
 
 describe("agent registry", () => {
-  it("accepts every documented spelling", () => {
+  it("accepts every documented spelling", async () => {
     expect(assertKnownAgent("codex")).toBe("codex");
     expect(assertKnownAgent("Claude")).toBe("claude");
     expect(assertKnownAgent(" antigravity ")).toBe("agy");
@@ -422,13 +397,13 @@ describe("agent registry", () => {
     expect(assertKnownAgent("copilot")).toBe("copilot");
   });
 
-  it("rejects unknown, empty and shell-pipe spellings", () => {
+  it("rejects unknown, empty and shell-pipe spellings", async () => {
     for (const bad of ["", "   ", "gpt", "codex|claude", "codex/claude"]) {
       expect(() => assertKnownAgent(bad), JSON.stringify(bad)).toThrow(UsageError);
     }
   });
 
-  it("de-duplicates a list without dropping unknown names silently", () => {
+  it("de-duplicates a list without dropping unknown names silently", async () => {
     expect(parseAgents("codex,codex,claude")).toEqual(["codex", "claude"]);
     expect(() => parseAgents("codex,bogus")).toThrow(/bogus/);
   });
@@ -437,7 +412,7 @@ describe("agent registry", () => {
 describe("hostile repository content cannot crash or hide the analysis", () => {
   const pkg = '{"name":"hostile","version":"1.0.0","dependencies":{"@nestjs/core":"^10.0.0","typeorm":"^0.3.0","pg":"^8.0.0"}}';
 
-  it("survives an expression nested deep enough to overflow the TypeScript parser", () => {
+  it("survives an expression nested deep enough to overflow the TypeScript parser", async () => {
     const deep = `const a = ${"(".repeat(4000)}1${")".repeat(4000)};`;
     const cwd = makeProject({
       "package.json": pkg,
@@ -445,7 +420,7 @@ describe("hostile repository content cannot crash or hide the analysis", () => {
       "src/ok.ts": "export const value = 1;"
     });
 
-    const result = runCli(["analyze"], { cwd });
+    const result = await runCli(["analyze"], { cwd });
 
     expect(result.stderr).not.toContain(INTERNAL_BUG_MARKER);
     expect(result.stderr).not.toMatch(/Maximum call stack/);
@@ -455,19 +430,19 @@ describe("hostile repository content cannot crash or hide the analysis", () => {
     expect(result.stdout).toContain("src/deep.ts");
   });
 
-  it("reports files skipped for size instead of silently producing partial results", () => {
+  it("reports files skipped for size instead of silently producing partial results", async () => {
     const cwd = makeProject({
       "package.json": pkg,
       "src/huge.ts": `export const blob = "${"A".repeat(3_000_000)}";`,
       "src/ok.ts": "export const value = 1;"
     });
 
-    const result = runCli(["analyze"], { cwd });
+    const result = await runCli(["analyze"], { cwd });
     expect(result.status).toBe(EXIT.OK);
     expect(result.stdout).toMatch(/Not analyzed: .*size limit/);
   });
 
-  it("handles unterminated, empty and oddly named sources without failing", () => {
+  it("handles unterminated, empty and oddly named sources without failing", async () => {
     const cwd = makeProject({
       "package.json": pkg,
       "src/unterminated.ts": "const s = `${",
@@ -477,30 +452,30 @@ describe("hostile repository content cannot crash or hide the analysis", () => {
       "src/-rf.ts": "export const c = 3;"
     });
 
-    const result = runCli(["analyze"], { cwd });
+    const result = await runCli(["analyze"], { cwd });
     expect(result.stderr).not.toContain(INTERNAL_BUG_MARKER);
     expect(result.status).toBe(EXIT.OK);
   });
 
-  it("does not follow a symlink out of the project or loop on a cyclic one", () => {
+  it("does not follow a symlink out of the project or loop on a cyclic one", async () => {
     const cwd = makeProject({ "package.json": pkg, "src/ok.ts": "export const value = 1;" });
     fs.symlinkSync("/etc/passwd", path.join(cwd, "src", "escape.ts"));
     fs.symlinkSync("..", path.join(cwd, "src", "loop"));
     fs.symlinkSync("nowhere", path.join(cwd, "src", "broken.ts"));
 
-    const result = runCli(["analyze"], { cwd });
+    const result = await runCli(["analyze"], { cwd });
     expect(result.status).toBe(EXIT.OK);
     expect(result.stdout).not.toContain("root:");
   });
 });
 
 describe("a malformed user config is the user's, and is never overwritten", () => {
-  it("refuses to rewrite an unparseable ~/.claude.json and says why", () => {
+  it("refuses to rewrite an unparseable ~/.claude.json and says why", async () => {
     const home = makeProject({});
     const corrupt = "NOT JSON {{{";
     fs.writeFileSync(path.join(home, ".claude.json"), corrupt);
 
-    const result = runCli(["install", "claude"], { cwd: makeProject(), home });
+    const result = await runCli(["install", "claude"], { cwd: makeProject(), home });
     const output = `${result.stdout}${result.stderr}`;
 
     expect(result.status).toBe(EXIT.USAGE);

@@ -1,10 +1,10 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { afterAll, describe, expect, it } from "vitest";
+
+import { runCli } from "./helpers/run-cli.js";
 
 import { buildClaudeMcpConfig } from "../integrations/claude/claude-mcp.js";
 import { buildCopilotMcpConfig } from "../integrations/copilot/copilot-mcp.js";
@@ -19,8 +19,6 @@ import { EXIT } from "../runtime/errors.js";
  * broken, and never blame itself for a permission problem on their machine.
  */
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const CLI = path.join(repoRoot, "cli", "backendguard.js");
 const temp = [];
 afterAll(() => temp.forEach((dir) => fs.rmSync(dir, { recursive: true, force: true })));
 
@@ -30,21 +28,7 @@ function tempDir(label) {
   return dir;
 }
 
-function runInstall({ home, cwd }) {
-  try {
-    const stdout = execFileSync(process.execPath, [CLI, "install", "claude"], {
-      cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180_000,
-      env: { ...process.env, HOME: home, USERPROFILE: home,
-        BACKENDGUARD_HOME: path.join(home, ".ctx"), CLAUDE_HOME: path.join(home, ".claude"),
-        CLAUDE_CONFIG_PATH: path.join(home, ".claude.json"), CODEX_HOME: path.join(home, ".codex"),
-        BACKENDGUARD_SKIP_UPDATE_CHECK: "1" }
-    });
-    return { status: 0, out: stdout };
-  } catch (error) {
-    return { status: typeof error.status === "number" ? error.status : -1,
-             out: (error.stdout || "") + (error.stderr || "") };
-  }
-}
+const runInstall = ({ home, cwd }) => runCli(["install", "claude"], { home, cwd });
 
 const BUILDERS = {
   claude: buildClaudeMcpConfig,
@@ -187,13 +171,13 @@ describe("the installed CLI never reports a config problem as its own bug", () =
   const shapes = { "an array": "[]", "a string": '"x"', "truncated JSON": '{"a":', "a bad mcpServers": '{"mcpServers":[]}' };
 
   for (const [name, content] of Object.entries(shapes)) {
-    it(`${name} exits 2 and leaves the file untouched`, () => {
+    it(`${name} exits 2 and leaves the file untouched`, async () => {
       const home = tempDir("cli-cfg-home");
       const cwd = tempDir("cli-cfg-proj");
       fs.writeFileSync(path.join(cwd, "package.json"), '{"name":"p","version":"1.0.0"}');
       fs.writeFileSync(path.join(home, ".claude.json"), content);
 
-      const result = runInstall({ home, cwd });
+      const result = await runInstall({ home, cwd });
 
       expect(result.status, result.out.slice(0, 200)).toBe(EXIT.USAGE);
       expect(result.out).not.toContain("This is a bug in BackendGuard");
@@ -205,27 +189,16 @@ describe("the installed CLI never reports a config problem as its own bug", () =
 describe("a failing agent does not cancel the agents that can be installed", () => {
   // `install --agents codex,claude` used to abort on codex — whose CLI is
   // absent on most machines — and never attempt claude.
-  it("installs the agents it can and exits 3 naming the ones it could not", () => {
+  it("installs the agents it can and exits 3 naming the ones it could not", async () => {
     const home = tempDir("multi-home");
     const cwd = tempDir("multi-proj");
     fs.writeFileSync(path.join(cwd, "package.json"), '{"name":"p","version":"1.0.0"}');
 
-    let result;
-    try {
-      const stdout = execFileSync(process.execPath, [CLI, "install", "--agents", "codex,claude"], {
-        cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 240_000,
-        env: { ...process.env, HOME: home, USERPROFILE: home,
-          BACKENDGUARD_HOME: path.join(home, ".ctx"), CLAUDE_HOME: path.join(home, ".claude"),
-          CLAUDE_CONFIG_PATH: path.join(home, ".claude.json"), CODEX_HOME: path.join(home, ".codex"),
-          // Guarantee the Codex CLI cannot be found, whatever the machine has.
-          PATH: path.dirname(process.execPath),
-          BACKENDGUARD_SKIP_UPDATE_CHECK: "1" }
-      });
-      result = { status: 0, out: stdout };
-    } catch (error) {
-      result = { status: typeof error.status === "number" ? error.status : -1,
-                 out: (error.stdout || "") + (error.stderr || "") };
-    }
+    // PATH is narrowed to Node's own directory so the Codex CLI cannot be
+    // found, whatever the machine running this happens to have installed.
+    const result = await runCli(["install", "--agents", "codex,claude"], {
+      cwd, home, env: { PATH: path.dirname(process.execPath) }
+    });
 
     expect(result.out).not.toContain("This is a bug in BackendGuard");
     // Claude needs no external CLI, so it must have been installed even though
@@ -237,13 +210,13 @@ describe("a failing agent does not cancel the agents that can be installed", () 
     expect(result.out).toMatch(/Not installed/);
   }, 300_000);
 
-  it("a broken user config still exits 2 with its own message, not a generic install failure", () => {
+  it("a broken user config still exits 2 with its own message, not a generic install failure", async () => {
     const home = tempDir("multi-cfg-home");
     const cwd = tempDir("multi-cfg-proj");
     fs.writeFileSync(path.join(cwd, "package.json"), '{"name":"p","version":"1.0.0"}');
     fs.writeFileSync(path.join(home, ".claude.json"), "[]");
 
-    const result = runInstall({ home, cwd });
+    const result = await runInstall({ home, cwd });
     expect(result.status).toBe(EXIT.USAGE);
     expect(result.out).toMatch(/not an object/);
   }, 180_000);

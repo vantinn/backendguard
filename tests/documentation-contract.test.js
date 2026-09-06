@@ -1,4 +1,3 @@
-import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -7,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, describe, expect, it } from "vitest";
 
 import { COMMANDS, findCommand } from "../cli/command-registry.js";
+import { runCli } from "./helpers/run-cli.js";
 
 /**
  * The README is an API contract.
@@ -31,22 +31,7 @@ function sandbox() {
   return dir;
 }
 
-function run(args, { cwd = repoRoot } = {}) {
-  const home = sandbox();
-  try {
-    const stdout = execFileSync(process.execPath, [CLI, ...args], {
-      cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120000,
-      env: { ...process.env, HOME: home, USERPROFILE: home,
-        BACKENDGUARD_HOME: path.join(home, ".ctx"), CODEX_HOME: path.join(home, ".codex"),
-        CLAUDE_HOME: path.join(home, ".claude"), CLAUDE_CONFIG_PATH: path.join(home, ".claude.json"),
-        BACKENDGUARD_SKIP_UPDATE_CHECK: "1" }
-    });
-    return { status: 0, out: stdout };
-  } catch (error) {
-    return { status: typeof error.status === "number" ? error.status : -1,
-             out: (error.stdout || "") + (error.stderr || "") };
-  }
-}
+const run = (args, { cwd = repoRoot } = {}) => runCli(args, { cwd, home: sandbox() });
 
 /** Every `backendguard <...>` invocation shown in a fenced block in the README. */
 function documentedInvocations() {
@@ -101,7 +86,7 @@ describe("README documents only commands that exist", () => {
     expect(undeclared).toEqual([]);
   });
 
-  it("no documented invocation is rejected as a usage error", () => {
+  it("no documented invocation is rejected as a usage error", async () => {
     // Usage errors (exit 2) mean the CLI does not accept what the README shows.
     // Commands needing network, an agent CLI or prior state may legitimately
     // fail otherwise, so only exit code 2 is treated as a contract breach.
@@ -110,7 +95,7 @@ describe("README documents only commands that exist", () => {
       if (!findCommand(tokens[0])) continue;
       // Skip the ones that mutate the machine or need a third-party CLI.
       if (/^(install|setup|sync|refresh|ruler|skillshare|leaderboard|benchmark|embeddings|autowarm)\b/.test(tokens[0])) continue;
-      const result = run([...tokens, "--help"]);
+      const result = await run([...tokens, "--help"]);
       if (result.status === 2) rejected.push(`${text} -> exit 2: ${result.out.split("\n")[0]}`);
     }
     expect(rejected).toEqual([]);
@@ -119,8 +104,8 @@ describe("README documents only commands that exist", () => {
 
 describe("every registered command answers --help", () => {
   for (const command of COMMANDS) {
-    it(`${command.name} --help`, () => {
-      const result = run([command.name, "--help"]);
+    it(`${command.name} --help`, async () => {
+      const result = await run([command.name, "--help"]);
       expect(result.status, result.out.slice(0, 200)).toBe(0);
       expect(result.out).toContain(command.name);
       expect(result.out).toMatch(/Usage:/);
@@ -129,8 +114,8 @@ describe("every registered command answers --help", () => {
 });
 
 describe("the analyzer list the README points at is the real one", () => {
-  it("--list-analyzers runs and names the documented analyzers", () => {
-    const result = run(["analyze", "--list-analyzers"]);
+  it("--list-analyzers runs and names the documented analyzers", async () => {
+    const result = await run(["analyze", "--list-analyzers"]);
     expect(result.status).toBe(0);
     for (const id of ["nestjs-security", "typeorm", "prisma", "postgresql", "performance", "scalability"]) {
       expect(result.out, id).toContain(id);

@@ -14,6 +14,8 @@ A maintenance release. It contains no change to how BackendGuard behaves for a u
 
 - **The skillshare regression test downloaded and executed a third-party installer.** It called `installSkillshare` with `dryRun: false`, so every test run fetched `https://raw.githubusercontent.com/runkids/skillshare/main/install.sh` and piped it to `sh` — including in CI, which means arbitrary remote code ran inside the build. The comment above the test asserted the opposite. It then required the call to fail, which is only true where the installer cannot complete: it passed on a machine without passwordless sudo and failed on CI, where the install succeeded.
 
+- **The test suite could fail a release while every test passed.** The CLI tests drove `backendguard install` through `execFileSync`, which blocks the worker thread for the ten-odd seconds each install takes. Long enough, and the worker stops answering Vitest's `onTaskUpdate` RPC, so the run ends with `Timeout calling "onTaskUpdate"` and exit code 1 under a report reading "583 passed". It failed on Node 22 and passed on Node 20 purely on timing. The CLI is now spawned asynchronously through a shared helper, so the worker's event loop stays responsive; the suite also got faster (the configuration tests alone went from 64s to 40s).
+
 ### Changed
 
 - `installSkillshare` accepts the streaming command as a parameter, defaulting to the real one. Existing callers are unaffected; the parameter exists so the installer path can be covered without a network. Coverage is now wider than before: the POSIX and Windows installer commands, an installer failure surfacing as an integration error, and a declined prompt never reaching the installer at all.
