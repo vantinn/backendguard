@@ -6,6 +6,22 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 > **Note:** this file was recreated from scratch. The project's release history prior to this entry was not available to reconstruct accurately, and this changelog does not fabricate it. Entries from this point forward are accurate.
 
+## [0.9.3] - 2026-09-06
+
+A maintenance release. It contains no change to how BackendGuard behaves for a user: the only shipped difference is an internal seam that made a test possible to run offline. It exists because 0.9.2 was published outside the release workflow, so no tagged, gate-verified build of that code ever ran.
+
+### Fixed
+
+- **The skillshare regression test downloaded and executed a third-party installer.** It called `installSkillshare` with `dryRun: false`, so every test run fetched `https://raw.githubusercontent.com/runkids/skillshare/main/install.sh` and piped it to `sh` — including in CI, which means arbitrary remote code ran inside the build. The comment above the test asserted the opposite. It then required the call to fail, which is only true where the installer cannot complete: it passed on a machine without passwordless sudo and failed on CI, where the install succeeded.
+
+### Changed
+
+- `installSkillshare` accepts the streaming command as a parameter, defaulting to the real one. Existing callers are unaffected; the parameter exists so the installer path can be covered without a network. Coverage is now wider than before: the POSIX and Windows installer commands, an installer failure surfacing as an integration error, and a declined prompt never reaching the installer at all.
+
+### Notes
+
+- 0.9.2 was published to npm manually rather than through the release workflow, so its gates never ran in CI. The `v0.9.2` tag was added afterwards and points at the exact tree that was published. This release restores the intended flow: continuous integration green on `main`, then a tag, then a publish performed by the release workflow.
+
 ## [0.9.2] - 2026-09-06
 
 Post-release fixes for problems users hit while installing 0.9.1 into real backend projects, plus the additional faults found while auditing the paths those reports pointed at. No breaking changes: every command and flag documented for 0.9.1 still works.
