@@ -1141,21 +1141,29 @@ async function setup({ args = [], cwd = process.cwd() } = {}) {
  * crash ended a completed Ruler+agent install with
  * "This is a bug in BackendGuard. Please report it."
  *
- * A genuine fault inside BackendGuard still propagates: only errors that are
- * already classified as the environment's or the integration's are absorbed.
+ * Only an environment or integration failure is absorbed. A genuine fault
+ * inside BackendGuard propagates, and so do a usage error and a configuration
+ * error: those name one specific thing the user must fix, and burying that
+ * message under "could not install" — with the wrong exit code — would undo
+ * the classification work this release is about.
  */
 async function runOptionalIntegration(step, integration, degraded, run) {
   try {
     await run();
     return true;
   } catch (error) {
-    if (!isExpectedError(error)) throw error;
+    if (!isRecoverableIntegrationError(error)) throw error;
     degraded.push({ step, integration, message: error.message, hint: error.hint });
     console.log(`│  Skipped: ${error.message}`);
     if (error.hint) console.log(`│  ${error.hint}`);
     console.log("");
     return false;
   }
+}
+
+/** Environment and integration failures are the ones a later step can survive. */
+function isRecoverableIntegrationError(error) {
+  return error instanceof EnvironmentError || error instanceof IntegrationError;
 }
 
 const args = process.argv.slice(2);
@@ -1220,16 +1228,37 @@ try {
 
     if (!agents.length) throw emptyAgentSelectionError();
 
+    // One agent's CLI being absent must not cancel the others the user asked
+    // for: `install --agents codex,claude` used to abort on codex and never
+    // attempt claude. Failures are collected and reported at the end, and the
+    // command still exits non-zero so a script notices.
+    const installed = [];
+    const failed = [];
     for (const agent of agents) {
       console.log(`◇ Installing ${agent}...`);
-      await streamSetupOutput(() => install({ copy, agent }));
+      const ok = await runOptionalIntegration(`${agent} install`, agent, failed, () =>
+        streamSetupOutput(() => install({ copy, agent })));
+      if (ok) installed.push(agent);
       console.log("");
+    }
+
+    if (!installed.length) {
+      throw new EnvironmentError(`Could not install ${agents.length === 1 ? agents[0] : "any of the requested agents"}.`, {
+        hint: failed.map((entry) => entry.hint || entry.message).join(" ")
+          || "Check that the agent's CLI is installed, then re-run."
+      });
+    }
+    if (failed.length) {
+      console.log(`Installed: ${installed.join(", ")}`);
+      for (const entry of failed) console.log(`Not installed — ${entry.step}: ${entry.message}`);
+      console.log(`Re-run for those once fixed: backendguard install --agents ${failed.map((entry) => entry.integration).join(",")}`);
+      process.exitCode = EXIT.ENVIRONMENT;
     }
 
     if (interactive) {
       // Recommend community skills based on the selected agents.
       try {
-        const libraryResults = await fetchSkillsForAgents(agents, { dataDir: dataRoot() });
+        const libraryResults = await fetchSkillsForAgents(installed, { dataDir: dataRoot() });
         printSkillRecommendations(libraryResults);
       } catch { /* skill library is best-effort */ }
     }

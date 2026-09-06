@@ -201,3 +201,50 @@ describe("the installed CLI never reports a config problem as its own bug", () =
     }, 180_000);
   }
 });
+
+describe("a failing agent does not cancel the agents that can be installed", () => {
+  // `install --agents codex,claude` used to abort on codex — whose CLI is
+  // absent on most machines — and never attempt claude.
+  it("installs the agents it can and exits 3 naming the ones it could not", () => {
+    const home = tempDir("multi-home");
+    const cwd = tempDir("multi-proj");
+    fs.writeFileSync(path.join(cwd, "package.json"), '{"name":"p","version":"1.0.0"}');
+
+    let result;
+    try {
+      const stdout = execFileSync(process.execPath, [CLI, "install", "--agents", "codex,claude"], {
+        cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 240_000,
+        env: { ...process.env, HOME: home, USERPROFILE: home,
+          BACKENDGUARD_HOME: path.join(home, ".ctx"), CLAUDE_HOME: path.join(home, ".claude"),
+          CLAUDE_CONFIG_PATH: path.join(home, ".claude.json"), CODEX_HOME: path.join(home, ".codex"),
+          // Guarantee the Codex CLI cannot be found, whatever the machine has.
+          PATH: path.dirname(process.execPath),
+          BACKENDGUARD_SKIP_UPDATE_CHECK: "1" }
+      });
+      result = { status: 0, out: stdout };
+    } catch (error) {
+      result = { status: typeof error.status === "number" ? error.status : -1,
+                 out: (error.stdout || "") + (error.stderr || "") };
+    }
+
+    expect(result.out).not.toContain("This is a bug in BackendGuard");
+    // Claude needs no external CLI, so it must have been installed even though
+    // codex could not be.
+    const config = path.join(home, ".claude.json");
+    expect(fs.existsSync(config), result.out.slice(-400)).toBe(true);
+    expect(JSON.parse(fs.readFileSync(config, "utf8")).mcpServers["backendguard-mcp"]).toBeTruthy();
+    expect(result.status).toBe(EXIT.ENVIRONMENT);
+    expect(result.out).toMatch(/Not installed/);
+  }, 300_000);
+
+  it("a broken user config still exits 2 with its own message, not a generic install failure", () => {
+    const home = tempDir("multi-cfg-home");
+    const cwd = tempDir("multi-cfg-proj");
+    fs.writeFileSync(path.join(cwd, "package.json"), '{"name":"p","version":"1.0.0"}');
+    fs.writeFileSync(path.join(home, ".claude.json"), "[]");
+
+    const result = runInstall({ home, cwd });
+    expect(result.status).toBe(EXIT.USAGE);
+    expect(result.out).toMatch(/not an object/);
+  }, 180_000);
+});
