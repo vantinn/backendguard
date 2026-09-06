@@ -122,6 +122,10 @@ async function shouldInstallSkillshare({ yes = false } = {}) {
 export async function installSkillshare({
   run = runCommand,
   runShellCommand = runShell,
+  // Injectable so a test can assert *which* installer would run without
+  // downloading and executing a third-party script. Without this seam the only
+  // way to cover this path was to let CI run `curl | sh` against the network.
+  streamCommand = spawnShellStreaming,
   yes = false,
   dryRun = false,
   platform = process.platform
@@ -145,10 +149,10 @@ export async function installSkillshare({
   } else {
     console.log("Installing skillshare...");
     if (osName === "windows") {
-      await spawnShellStreaming("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `irm ${INSTALL_PS_URL} | iex`]);
+      await streamCommand("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", `irm ${INSTALL_PS_URL} | iex`]);
     } else {
-      const shell = shellInvocation(`curl -fsSL ${INSTALL_SH_URL} | sh`, { platform: process.platform });
-      await spawnShellStreaming(shell.command, shell.args);
+      const shell = shellInvocation(`curl -fsSL ${INSTALL_SH_URL} | sh`, { platform });
+      await streamCommand(shell.command, shell.args);
     }
   }
 

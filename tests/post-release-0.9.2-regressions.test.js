@@ -19,7 +19,7 @@ import {
 import { parseSetupArgs } from "../runtime/setup-wizard.js";
 import { spawnStreaming } from "../runtime/shell-runner.js";
 import { installSkillshare } from "../agent-context/skill-sync.js";
-import { EXIT, UsageError, isExpectedError } from "../runtime/errors.js";
+import { EXIT, IntegrationError, UsageError, isExpectedError } from "../runtime/errors.js";
 import { formatCliError } from "../cli/exit-codes.js";
 import { findCommand } from "../cli/command-registry.js";
 import { rejectUnknownFlags } from "../cli/options.js";
@@ -260,26 +260,69 @@ describe("BUG-004: `backendguard install claude` uses the positional agent", () 
 });
 
 describe("BUG-005: the skillshare installer no longer dies with `spawn is not defined`", () => {
-  it("does not throw a ReferenceError before the installer starts", async () => {
-    // The installer command is replaced with a process that cannot exist, so
-    // the test never reaches the network: reaching *spawn at all* is the proof
-    // that the missing import is gone.
+  // The installer is injected, so these never download or execute anything.
+  // An earlier version of this test let the real `curl ... | sh` run: it passed
+  // on a machine where the installer failed for lack of sudo and failed on CI
+  // where it succeeded, and it executed a third-party script inside the build.
+  it("reaches the installer instead of dying on a missing import", async () => {
+    const calls = [];
+    const streamCommand = async (command, args) => { calls.push({ command, args }); };
+
+    await installSkillshare({
+      yes: true,
+      dryRun: false,
+      platform: "linux",
+      streamCommand,
+      run: () => ({ stdout: "0.20.0" })
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].args.join(" ")).toMatch(/curl -fsSL https:\/\/.*install\.sh \| sh/);
+  });
+
+  it("runs the PowerShell installer on Windows", async () => {
+    const calls = [];
+    await installSkillshare({
+      yes: true,
+      dryRun: false,
+      platform: "win32",
+      streamCommand: async (command, args) => { calls.push({ command, args }); },
+      run: () => ({ stdout: "0.20.0" })
+    });
+
+    expect(calls[0].command).toBe("powershell");
+    expect(calls[0].args.join(" ")).toMatch(/irm https:\/\/.*install\.ps1 \| iex/);
+  });
+
+  it("surfaces an installer failure as an integration error, not a BackendGuard bug", async () => {
+    const failure = new IntegrationError("The skillshare installer exited with code 1.", { integration: "skillshare" });
     let thrown = null;
     try {
       await installSkillshare({
         yes: true,
         dryRun: false,
         platform: "linux",
+        streamCommand: async () => { throw failure; },
         run: () => ({ stdout: "" })
       });
-    } catch (error) {
-      thrown = error;
-    }
+    } catch (error) { thrown = error; }
 
-    expect(thrown).not.toBeNull();
+    expect(thrown).toBe(failure);
     expect(thrown).not.toBeInstanceOf(ReferenceError);
-    expect(thrown.message).not.toMatch(/spawn is not defined/);
-  }, 60_000);
+    expect(isExpectedError(thrown)).toBe(true);
+  });
+
+  it("declines to install without consent, and never reaches the installer", async () => {
+    const calls = [];
+    await expect(installSkillshare({
+      yes: false,
+      dryRun: false,
+      platform: "linux",
+      streamCommand: async (c, a) => { calls.push({ c, a }); },
+      run: () => ({ stdout: "" })
+    })).rejects.toMatchObject({ name: "EnvironmentError" });
+    expect(calls).toEqual([]);
+  });
 
   it("classifies a missing executable as an environment problem", async () => {
     await expect(spawnStreaming("definitely-not-a-real-binary-9f3a", [], { log: () => {} }))
